@@ -21,7 +21,7 @@ const crcLen = 8
 // means the function will skip some parts of the file, which is not compatible
 // with Upstash yet. These parts include function data, multiple databases(any database other than 0),
 // and unsupported modules.
-func ReadFile(name string, handler FileHandler) error {
+func ReadFile(path string, handler FileHandler) error {
 	// An RDB file has the following form:
 	// <magic><version>[<select-db>[<resize-db>]<entry>*]*[<aux>*][<module-aux>*][<function>*]<eof>[<crc>]
 	// where
@@ -57,7 +57,7 @@ func ReadFile(name string, handler FileHandler) error {
 	// After that, there might be a 8 byte unsigned integer describing the CRC-64 of the file content.
 	// The <crc> is added in RDB version 5, and after that version, it is always there. The RDB CRC calculation
 	// might be disabled in the database configuration. In that case, it has the value of 0.
-	file, err := os.Open(name)
+	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
