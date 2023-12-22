@@ -2,7 +2,7 @@
 
 This library is capable of parsing RDB files upto version 11.
 
-It can also be used to parse and write single RDB values.
+It can also be used to parse and dump single RDB values, and verify RDB files and values.
 
 ## API
 
