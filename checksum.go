@@ -56,7 +56,7 @@ func getCRC(crc uint64, payload []byte) uint64 {
 
 	// Go implementation uses pre and post inversions while calculating the
 	// CRC, but Redis does not. To make sure that we calculate the same
-	// CRC we pass XOR of 0 as the initial CRC, and XOR the return value
+	// CRC we pass XOR of the initial CRC, and XOR the return value
 	// to have the same effect.
 	return ^crc64.Update(^crc, crc64Table, payload)
 }

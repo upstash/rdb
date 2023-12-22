@@ -95,6 +95,29 @@ func TestReadString(t *testing.T) {
 	}
 }
 
+func TestReadString_withMaxLz77StrLen(t *testing.T) {
+	dump, err := os.ReadFile(filepath.Join(valueDumpsPath, "string-lzf.bin"))
+	require.NoError(t, err)
+
+	err = VerifyValueChecksum(dump)
+	require.NoError(t, err)
+
+	dump = dump[:len(dump)-10]
+
+	r := valueReader{
+		buf:           newMemoryBackedBuffer(dump),
+		maxLz77StrLen: 10,
+	}
+
+	ot, err := r.ReadType()
+	require.NoError(t, err)
+
+	require.Equal(t, TypeString, ot)
+
+	_, err = r.ReadString()
+	require.ErrorContains(t, err, "uncompressed length")
+}
+
 func TestReadList(t *testing.T) {
 	path := filepath.Join(valueDumpsPath, "list.bin")
 

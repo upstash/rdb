@@ -22,6 +22,10 @@ const crcLen = 8
 // with Upstash yet. These parts include function data, multiple databases(any database other than 0),
 // and unsupported modules.
 func ReadFile(path string, handler FileHandler) error {
+	return readFile(path, handler, 0)
+}
+
+func readFile(path string, handler FileHandler, maxLz77StrLen uint64) error {
 	// An RDB file has the following form:
 	// <magic><version>[<select-db>[<resize-db>]<entry>*]*[<aux>*][<module-aux>*][<function>*]<eof>[<crc>]
 	// where
@@ -106,7 +110,8 @@ func ReadFile(path string, handler FileHandler) error {
 	}
 
 	reader := &valueReader{
-		buf: buf,
+		buf:           buf,
+		maxLz77StrLen: maxLz77StrLen,
 	}
 
 	handler0 := handler
