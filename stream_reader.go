@@ -123,7 +123,8 @@ func (r *valueReader) readStreamListpacks0(
 	}
 
 	entriesViewReader := valueReader{
-		buf: entriesView,
+		buf:           entriesView,
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	var read uint64
@@ -142,7 +143,8 @@ func (r *valueReader) readStreamListpacks0(
 	}
 
 	groupsViewReader := valueReader{
-		buf: groupsView,
+		buf:           groupsView,
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// second pass over entries, we read all into cb, after setting the pending entry values
@@ -179,7 +181,8 @@ func (r *valueReader) readStreamEntries(cb func(StreamEntry) error) error {
 		}
 
 		masterIDReader := valueReader{
-			buf: newMemoryBackedBuffer(stringToBytes(masterIDS)),
+			buf:           newMemoryBackedBuffer(stringToBytes(masterIDS)),
+			maxLz77StrLen: r.maxLz77StrLen,
 		}
 
 		masterIDMillis, err := masterIDReader.readUint64BE()
@@ -203,7 +206,8 @@ func (r *valueReader) readStreamEntries(cb func(StreamEntry) error) error {
 		}
 
 		lpReader := valueReader{
-			buf: newMemoryBackedBuffer(stringToBytes(lp)),
+			buf:           newMemoryBackedBuffer(stringToBytes(lp)),
+			maxLz77StrLen: r.maxLz77StrLen,
 		}
 
 		// <lpbytes><lplen>

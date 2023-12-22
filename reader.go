@@ -8,19 +8,16 @@ import (
 	"strconv"
 )
 
-var errZMUnexpectedEnd = errors.New("unexpected end of zipmap")
-var errZLUnexpectedEnd = errors.New("unexpected end of ziplist")
-var errLPUnexpectedEnd = errors.New("unexpected end of listpack")
-
-// valueReader provides ways of reading different RDB objects.
-// All reader methods advance the pointer by the amount of data read.
-type valueReader struct {
-	buf buffer
+// ReadValue reads the single RDB value given in the payload into the handler.
+// The given key is passed into the handler methods directly.
+func ReadValue(key string, payload []byte, handler ValueHandler) error {
+	return readValue(key, payload, handler, 0)
 }
 
-func ReadValue(key string, payload []byte, handler ValueHandler) error {
+func readValue(key string, payload []byte, handler ValueHandler, maxLz77StrLen uint64) error {
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(payload),
+		buf:           newMemoryBackedBuffer(payload),
+		maxLz77StrLen: maxLz77StrLen,
 	}
 
 	t, err := reader.ReadType()
@@ -29,6 +26,18 @@ func ReadValue(key string, payload []byte, handler ValueHandler) error {
 	}
 
 	return reader.readObject(key, t, handler)
+}
+
+var errZMUnexpectedEnd = errors.New("unexpected end of zipmap")
+var errZLUnexpectedEnd = errors.New("unexpected end of ziplist")
+var errLPUnexpectedEnd = errors.New("unexpected end of listpack")
+var errTooBigLz77String = errors.New("uncompressed length of the string is too big")
+
+// valueReader provides ways of reading different RDB objects.
+// All reader methods advance the pointer by the amount of data read.
+type valueReader struct {
+	buf           buffer
+	maxLz77StrLen uint64
 }
 
 func (r *valueReader) readObject(key string, t Type, handler ValueHandler) error {
@@ -215,7 +224,7 @@ func (r *valueReader) readLen() (uint64, bool, error) {
 // When the length has no special encoding, the next length bytes are
 // returned as a string.
 //
-// When the string has a specially encoded length, it was one of the following,
+// When the string has a specially encoded length, it is one of the following,
 // depending on the encoding:
 // - 8 bit signed integer, when the length is 0
 // - 16 bit signed integer, when the length is 1
@@ -267,6 +276,10 @@ func (r *valueReader) ReadString() (string, error) {
 			uncompressedLen, _, err := r.readLen()
 			if err != nil {
 				return "", err
+			}
+
+			if r.maxLz77StrLen > 0 && uncompressedLen > r.maxLz77StrLen {
+				return "", errTooBigLz77String
 			}
 
 			compressed, err := r.read(int(compressedLen))
@@ -550,7 +563,8 @@ func (r *valueReader) ReadHashZipmap(cb func(string, string) error) error {
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(zipmap)),
+		buf:           newMemoryBackedBuffer(stringToBytes(zipmap)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	zmlen, err := reader.readUint8()
@@ -692,7 +706,8 @@ func (r *valueReader) ReadListZiplist(cb func(string) error) (uint64, error) {
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(ziplist)),
+		buf:           newMemoryBackedBuffer(stringToBytes(ziplist)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// <zlbytes> + <zltail>
@@ -760,7 +775,8 @@ func (r *valueReader) ReadSetIntset(cb func(string) error) error {
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(intset)),
+		buf:           newMemoryBackedBuffer(stringToBytes(intset)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	encoding, err := reader.readUint32()
@@ -818,7 +834,8 @@ func (r *valueReader) ReadZsetZiplist(cb func(string, float64) error) (uint64, e
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(ziplist)),
+		buf:           newMemoryBackedBuffer(stringToBytes(ziplist)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// <zlbytes> + <zltail>
@@ -890,7 +907,8 @@ func (r *valueReader) ReadHashZiplist(cb func(string, string) error) error {
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(ziplist)),
+		buf:           newMemoryBackedBuffer(stringToBytes(ziplist)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// <zlbytes> + <zltail>
@@ -984,7 +1002,8 @@ func (r *valueReader) ReadHashListpack(cb func(string, string) error) error {
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(listpack)),
+		buf:           newMemoryBackedBuffer(stringToBytes(listpack)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// <lpbytes>
@@ -1051,7 +1070,8 @@ func (r *valueReader) ReadZsetListpack(cb func(string, float64) error) (uint64, 
 	}
 
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(listpack)),
+		buf:           newMemoryBackedBuffer(stringToBytes(listpack)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// <lpbytes>
@@ -1329,7 +1349,8 @@ func (r *valueReader) ReadStreamListpacks3(
 // <lpend> is always 255
 func (r *valueReader) readListpack(listpack string, cb func(string) error) (uint64, error) {
 	reader := valueReader{
-		buf: newMemoryBackedBuffer(stringToBytes(listpack)),
+		buf:           newMemoryBackedBuffer(stringToBytes(listpack)),
+		maxLz77StrLen: r.maxLz77StrLen,
 	}
 
 	// <lpbytes>

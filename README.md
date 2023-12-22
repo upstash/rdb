@@ -55,7 +55,7 @@ type valueHandler struct {
 // called depending on the type of the value in the given payload.
 
 func main() {
-	payload := []byte{/*RDB value payload*/}
+	payload := []byte{ /*RDB value payload*/ }
 	err := rdb.ReadValue("key", payload, &valueHandler{})
 	if err != nil {
 		log.Fatal(err)
@@ -79,5 +79,53 @@ func main() {
 	writer.WriteString("foo")
 	writer.WriteChecksum(rdb.Version)
 	writer.GetBuffer() // payload
+}
+```
+
+### Verifying a file
+
+The following code demonstrates how to verify an RDB file is not corrupt, and
+does not exceed the defined limits of the total data, max entry, and max key sizes.
+
+```go
+import (
+	"log"
+
+	"github.com/upstash/rdb"
+)
+
+func main() {
+	opts := rdb.VerifyFileOptions{
+		MaxDataSize:  256 << 20, // 256 MB
+		MaxEntrySize: 100 << 20, // 100 MB
+	}
+	err := rdb.VerifyFile("/path/to/dump.rdb", opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+### Verifying a value
+
+The following code demonstrates how to verify an RDB value is not corrupt, and
+does not exceed the defined limits of the max entry size.
+
+```go
+import (
+	"log"
+
+	"github.com/upstash/rdb"
+)
+
+func main() {
+	opts := rdb.VerifyValueOptions{
+		MaxEntrySize: 100 << 20, // 100 MB
+	}
+	payload := []byte{ /*RDB value payload*/ }
+	err := rdb.VerifyValue(payload, opts)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 ```
