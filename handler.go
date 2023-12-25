@@ -46,7 +46,7 @@ type ValueHandler interface {
 // and their expiration information from RDB files.
 type FileHandler interface {
 	ValueHandler
-	HandleExpireTime(key string, expireTime time.Duration) error
+	HandleExpireTime(key string, expireTime time.Duration)
 }
 
 // nopHandler is used to ignore the RDB objects read so that
@@ -112,6 +112,5 @@ func (nopHandler) StreamGroupHandler(key string) func(group StreamConsumerGroup)
 func (nopHandler) HandleStreamEnding(key string, entriesRead uint64) {
 }
 
-func (nopHandler) HandleExpireTime(key string, expireTime time.Duration) error {
-	return nil
+func (nopHandler) HandleExpireTime(key string, expireTime time.Duration) {
 }

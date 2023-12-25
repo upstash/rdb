@@ -9,11 +9,15 @@ import (
 var defaultMaxDataSize = 256 << 20  // 256 MB
 var defaultMaxEntrySize = 100 << 20 // 100 MB
 var defaultMaxKeySize = 32 << 10    // 32 KB
+var defaultMaxStreamPELSize = 1000
+
+const maxStreamStrSize = math.MaxUint32
 
 type VerifyFileOptions struct {
-	MaxDataSize  int
-	MaxEntrySize int
-	MaxKeySize   int
+	MaxDataSize      int
+	MaxEntrySize     int
+	MaxKeySize       int
+	MaxStreamPELSize int
 }
 
 func (o *VerifyFileOptions) maybeSetDefaults() {
@@ -28,6 +32,10 @@ func (o *VerifyFileOptions) maybeSetDefaults() {
 	if o.MaxKeySize <= 0 {
 		o.MaxKeySize = defaultMaxKeySize
 	}
+
+	if o.MaxStreamPELSize <= 0 {
+		o.MaxStreamPELSize = defaultMaxStreamPELSize
+	}
 }
 
 // VerifyFile verifies that the given RDB file is not corrupt,
@@ -35,21 +43,27 @@ func (o *VerifyFileOptions) maybeSetDefaults() {
 func VerifyFile(path string, opts VerifyFileOptions) error {
 	opts.maybeSetDefaults()
 	v := &verifier{
-		maxDataSize:  opts.MaxDataSize,
-		maxEntrySize: opts.MaxEntrySize,
-		maxKeySize:   opts.MaxKeySize,
+		maxDataSize:      opts.MaxDataSize,
+		maxEntrySize:     opts.MaxEntrySize,
+		maxKeySize:       opts.MaxKeySize,
+		maxStreamPELSize: opts.MaxStreamPELSize,
 	}
 
 	return readFile(path, v, uint64(opts.MaxEntrySize))
 }
 
 type VerifyValueOptions struct {
-	MaxEntrySize int
+	MaxEntrySize     int
+	MaxStreamPELSize int
 }
 
 func (o *VerifyValueOptions) maybeSetDefaults() {
 	if o.MaxEntrySize <= 0 {
 		o.MaxEntrySize = defaultMaxEntrySize
+	}
+
+	if o.MaxStreamPELSize <= 0 {
+		o.MaxStreamPELSize = defaultMaxStreamPELSize
 	}
 }
 
@@ -58,7 +72,8 @@ func (o *VerifyValueOptions) maybeSetDefaults() {
 func VerifyValue(payload []byte, opts VerifyValueOptions) error {
 	opts.maybeSetDefaults()
 	v := &verifier{
-		maxEntrySize: opts.MaxEntrySize,
+		maxEntrySize:     opts.MaxEntrySize,
+		maxStreamPELSize: opts.MaxStreamPELSize,
 		// We don't care about the values below, as they don't
 		// really apply to RDB values.
 		maxDataSize: math.MaxInt,
@@ -71,12 +86,15 @@ func VerifyValue(payload []byte, opts VerifyValueOptions) error {
 var errMaxDataSizeExceeded = errors.New("max data size is exceeded")
 var errMaxEntrySizeExceeded = errors.New("max entry size is exceeded")
 var errMaxKeySizeExceeded = errors.New("max key size is exceeded")
+var errMaxStreamPELSizeExceeded = errors.New("max stream pel size is exceeded")
+var errMaxStreamStrSizeExceeded = errors.New("max stream string item size is exceeded")
 
 type verifier struct {
-	maxDataSize  int
-	maxEntrySize int
-	maxKeySize   int
-	dataSize     int
+	maxDataSize      int
+	maxEntrySize     int
+	maxKeySize       int
+	maxStreamPELSize int
+	dataSize         int
 }
 
 func (v *verifier) HandleString(key string, value string) error {
@@ -250,6 +268,10 @@ func (v *verifier) StreamEntryHandler(key string) func(entry StreamEntry) error 
 	return func(entry StreamEntry) error {
 		var valueSize int
 		for _, value := range entry.Value {
+			if len(value) > maxStreamStrSize {
+				return errMaxStreamStrSizeExceeded
+			}
+
 			valueSize += len(value)
 		}
 
@@ -269,15 +291,31 @@ func (v *verifier) StreamEntryHandler(key string) func(entry StreamEntry) error 
 func (v *verifier) StreamGroupHandler(key string) func(group StreamConsumerGroup) error {
 	var entrySize int
 	return func(group StreamConsumerGroup) error {
+		if len(group.Name) > maxStreamStrSize {
+			return errMaxStreamStrSizeExceeded
+		}
+
 		entrySize += len(group.Name) + 24 // 8: LastID#Seq + 8: LastID#Millis + 8: EntriesRead
 
 		for _, consumer := range group.Consumers {
+			if len(consumer.Name) > maxStreamStrSize {
+				return errMaxStreamStrSizeExceeded
+			}
+
 			entrySize += len(consumer.Name) + 16 // 8: SeenTime + 8: ActiveTime
+
+			if len(consumer.PendingEntries) > v.maxStreamPELSize {
+				return errMaxStreamPELSizeExceeded
+			}
 
 			for _, pe := range consumer.PendingEntries {
 				entrySize += 32 // 8: ID#Seq + 8: ID#Millis + 8: DeliveryCount + 8: DeliveryTime
 
 				for _, val := range pe.Entry.Value {
+					if len(val) > maxStreamStrSize {
+						return errMaxStreamStrSizeExceeded
+					}
+
 					entrySize += len(val)
 				}
 			}
@@ -303,8 +341,7 @@ func (v *verifier) AllowPartialRead() bool {
 	return true
 }
 
-func (v *verifier) HandleExpireTime(key string, expireTime time.Duration) error {
-	return nil
+func (v *verifier) HandleExpireTime(key string, expireTime time.Duration) {
 }
 
 func (v *verifier) HandleListEnding(key string, entriesRead uint64) {

@@ -2,6 +2,7 @@ package rdb
 
 import (
 	"errors"
+	"sort"
 	"strconv"
 )
 
@@ -156,6 +157,18 @@ func (r *valueReader) readStreamListpacks0(
 					return errors.New("illegal state: an entry is in PEL but there is no corresponding entry in stream")
 				}
 			}
+
+			sort.Slice(c.PendingEntries, func(i, j int) bool {
+				a, b := c.PendingEntries[i].Entry.ID, c.PendingEntries[j].Entry.ID
+
+				if a.Millis < b.Millis {
+					return true
+				} else if a.Millis > b.Millis {
+					return false
+				} else {
+					return a.Seq < b.Seq
+				}
+			})
 		}
 
 		return groupCB(group)
@@ -523,7 +536,11 @@ func (r *valueReader) readStreamConsumerGroups(t Type, cb func(StreamConsumerGro
 			EntriesRead: entriesRead,
 			Consumers:   consumers,
 		}
-		cb(group)
+
+		err = cb(group)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

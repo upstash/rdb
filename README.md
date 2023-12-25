@@ -98,6 +98,7 @@ func main() {
 	opts := rdb.VerifyFileOptions{
 		MaxDataSize:  256 << 20, // 256 MB
 		MaxEntrySize: 100 << 20, // 100 MB
+		MaxStreamPELSize: 1000,
 	}
 	err := rdb.VerifyFile("/path/to/dump.rdb", opts)
 	if err != nil {
@@ -121,6 +122,7 @@ import (
 func main() {
 	opts := rdb.VerifyValueOptions{
 		MaxEntrySize: 100 << 20, // 100 MB
+		MaxStreamPELSize: 1000,
 	}
 	payload := []byte{ /*RDB value payload*/ }
 	err := rdb.VerifyValue(payload, opts)

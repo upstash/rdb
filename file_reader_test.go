@@ -151,9 +151,8 @@ func (db *dummyDB) HandleStreamEnding(key string, entriesRead uint64) {
 	db.streamEntriesRead[key] = entriesRead
 }
 
-func (db *dummyDB) HandleExpireTime(key string, expireTime time.Duration) error {
+func (db *dummyDB) HandleExpireTime(key string, expireTime time.Duration) {
 	db.expireTimes[key] = expireTime
-	return nil
 }
 
 var dumpsPath = filepath.Join("testdata", "dumps")
