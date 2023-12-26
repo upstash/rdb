@@ -258,16 +258,13 @@ func readObject(reader *valueReader, handler FileHandler, t Type, hasExpireTime 
 		return err
 	}
 
+	if hasExpireTime {
+		handler.HandleExpireTime(key, expireTime)
+	}
+
 	err = reader.readObject(key, t, handler)
 	if err != nil {
 		return err
-	}
-
-	if hasExpireTime {
-		err = handler.HandleExpireTime(key, expireTime)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
