@@ -97,6 +97,36 @@ type verifier struct {
 	dataSize         int
 }
 
+func (v *verifier) HashWithExpEntryHandler(key string) func(field string, value string, ttl uint64) error {
+	if len(key) > v.maxKeySize {
+		return func(field, value string, ttl uint64) error {
+			return errMaxKeySizeExceeded
+		}
+	}
+
+	v.dataSize += len(key)
+	if v.dataSize > v.maxDataSize {
+		return func(field, value string, ttl uint64) error {
+			return errMaxDataSizeExceeded
+		}
+	}
+
+	var entrySize int
+	return func(field, value string, ttl uint64) error {
+		entrySize += len(field) + len(value) + 8
+		if entrySize > v.maxEntrySize {
+			return errMaxEntrySizeExceeded
+		}
+
+		v.dataSize += entrySize
+		if v.dataSize > v.maxDataSize {
+			return errMaxDataSizeExceeded
+		}
+
+		return nil
+	}
+}
+
 func (v *verifier) HandleString(key string, value string) error {
 	if len(key) > v.maxKeySize {
 		return errMaxKeySizeExceeded

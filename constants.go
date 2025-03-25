@@ -1,6 +1,6 @@
 package rdb
 
-const Version uint16 = 11
+const Version uint16 = 13
 
 type Type uint8
 
@@ -25,6 +25,8 @@ const (
 	TypeStreamListpacks2 Type = 19
 	TypeSetListpack      Type = 20
 	TypeStreamListpacks3 Type = 21
+	TypeHashMetadata     Type = 22
+	TypeHashListpackEx   Type = 23
 )
 
 const (

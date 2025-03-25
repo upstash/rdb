@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"time"
 )
 
 type Writer struct {
@@ -131,6 +132,41 @@ func (w *Writer) WriteHash(hash map[string]string) error {
 		}
 	}
 
+	return nil
+}
+
+type HashEntry struct {
+	Value          string
+	ExpirationTime *time.Time
+}
+
+// WriteHashWithMetadata writes the given hash as the TypeHashMetadata with expiration metadata for each field.
+func (w *Writer) WriteHashWithMetadata(hash map[string]HashEntry) error {
+	n := len(hash)
+	err := w.writeLen(uint64(n))
+	if err != nil {
+		return err
+	}
+
+	for key, value := range hash {
+		ms := int64(0)
+		if value.ExpirationTime != nil {
+			ms = value.ExpirationTime.UnixMilli()
+		}
+		err = w.writeLen(uint64(ms))
+		if err != nil {
+			return err
+		}
+		err = w.WriteString(key)
+		if err != nil {
+			return err
+		}
+
+		err = w.WriteString(value.Value)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

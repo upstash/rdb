@@ -2,12 +2,14 @@ package rdb
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ohler55/ojg/oj"
 	"github.com/stretchr/testify/require"
@@ -1298,4 +1300,87 @@ func TestReadStreamListpacks3_big(t *testing.T) {
 	}
 
 	require.Equal(t, expectedGroups, groups)
+}
+
+type hashFieldWithExp struct {
+	value string
+	exp   time.Time
+}
+
+func TestReadHashWithExpiration(t *testing.T) {
+	path := filepath.Join(valueDumpsPath, "hash-with-exp.bin")
+
+	dump, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	err = VerifyValueChecksum(dump)
+	require.NoError(t, err)
+
+	dump = dump[:len(dump)-10]
+
+	r := valueReader{
+		buf: newMemoryBackedBuffer(dump),
+	}
+
+	ot, err := r.ReadType()
+	require.NoError(t, err)
+
+	require.Equal(t, TypeHashMetadata, ot)
+
+	hash := make(map[string]hashFieldWithExp)
+	cb := func(field, value string, ttl uint64) error {
+		hash[field] = hashFieldWithExp{
+			value: value,
+			exp:   time.UnixMilli(int64(ttl)),
+		}
+		return nil
+	}
+	err = r.ReadHashMetadata(cb)
+	require.NoError(t, err)
+	assert.Len(t, hash, 1000)
+
+	for _, field := range hash {
+		assert.WithinDuration(t, field.exp, time.Unix(2058210509, 0), time.Second)
+	}
+}
+
+func TestReadHashWithExpirationListpack(t *testing.T) {
+	path := filepath.Join(valueDumpsPath, "hash-listpack-with-exp.bin")
+
+	dump, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	err = VerifyValueChecksum(dump)
+	require.NoError(t, err)
+
+	dump = dump[:len(dump)-10]
+
+	r := valueReader{
+		buf: newMemoryBackedBuffer(dump),
+	}
+
+	ot, err := r.ReadType()
+	require.NoError(t, err)
+
+	require.Equal(t, TypeHashListpackEx, ot)
+
+	hash := make(map[string]hashFieldWithExp)
+	cb := func(field, value string, ttl uint64) error {
+		hash[field] = hashFieldWithExp{
+			value: value,
+			exp:   time.UnixMilli(int64(ttl)),
+		}
+		return nil
+	}
+	err = r.ReadHashListpackEx(cb)
+	require.NoError(t, err)
+	require.Equal(t,
+		map[string]hashFieldWithExp{
+			"myfield": {
+				value: "myvalue",
+				exp:   time.Unix(2216202057, 0),
+			},
+		},
+		hash,
+	)
 }
