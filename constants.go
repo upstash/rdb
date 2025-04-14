@@ -1,6 +1,6 @@
 package rdb
 
-const Version uint16 = 13
+const Version uint16 = 12
 
 type Type uint8
 

@@ -1340,7 +1340,7 @@ func TestReadHashWithExpiration(t *testing.T) {
 	assert.Len(t, hash, 1000)
 
 	for _, field := range hash {
-		assert.WithinDuration(t, field.exp, time.Unix(2058210509, 0), time.Second)
+		assert.WithinDuration(t, field.exp, time.Unix(2216202057, 0), time.Second)
 	}
 }
 
