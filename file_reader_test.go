@@ -157,8 +157,8 @@ func (db *dummyDB) HandleExpireTime(key string, expireTime time.Duration) {
 	db.expireTimes[key] = expireTime
 }
 
-func (db *dummyDB) HashWithExpEntryHandler(key string) func(field string, value string, ttl uint64) error {
-	return func(field string, value string, ttl uint64) error {
+func (db *dummyDB) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
+	return func(field string, value string, exp time.Time) error {
 		hash, ok := db.hashes[key]
 		if !ok {
 			hash = make(map[string]string)
@@ -172,8 +172,10 @@ func (db *dummyDB) HashWithExpEntryHandler(key string) func(field string, value 
 			hashExpireTimes = make(map[string]time.Time)
 		}
 
-		hashExpireTimes[field] = time.UnixMilli(int64(ttl))
-		db.hashExpireTimes[key] = hashExpireTimes
+		if !exp.IsZero() {
+			hashExpireTimes[field] = exp
+			db.hashExpireTimes[key] = hashExpireTimes
+		}
 		return nil
 	}
 }

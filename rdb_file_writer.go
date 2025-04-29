@@ -1,13 +1,15 @@
 package rdb
 
 import (
+	"bufio"
 	"encoding/binary"
 	"io"
 	"os"
 )
 
 type FileWriter struct {
-	file *os.File
+	w *bufio.Writer
+	f *os.File
 }
 
 func newFileWriter(path string) (*FileWriter, error) {
@@ -15,62 +17,65 @@ func newFileWriter(path string) (*FileWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FileWriter{file: f}, nil
+	return &FileWriter{w: bufio.NewWriter(f), f: f}, nil
 }
 
 func (fw FileWriter) WriteUint8(n uint8) error {
-	_, err := fw.file.Write([]byte{byte(n)})
+	err := fw.w.WriteByte(n)
+	if err != nil {
+		return err
+	}
 	return err
 }
 
 func (fw FileWriter) WriteUint16(n uint16) error {
 	b := make([]byte, 2)
 	binary.LittleEndian.PutUint16(b, n)
-	_, err := fw.file.Write(b)
+	_, err := fw.w.Write(b)
 	return err
 }
 
 func (fw FileWriter) WriteUint16BE(n uint16) error {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, n)
-	_, err := fw.file.Write(b)
+	_, err := fw.w.Write(b)
 	return err
 }
 
 func (fw FileWriter) WriteUint32(n uint32) error {
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint32(b, n)
-	_, err := fw.file.Write(b)
+	_, err := fw.w.Write(b)
 	return err
 }
 
 func (fw FileWriter) WriteUint32BE(n uint32) error {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, n)
-	_, err := fw.file.Write(b)
+	_, err := fw.w.Write(b)
 	return err
 }
 
 func (fw FileWriter) WriteUint64(n uint64) error {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, n)
-	_, err := fw.file.Write(b)
+	_, err := fw.w.Write(b)
 	return err
 }
 
 func (fw FileWriter) WriteUint64BE(n uint64) error {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, n)
-	_, err := fw.file.Write(b)
+	_, err := fw.w.Write(b)
 	return err
 }
 
 func (fw FileWriter) Write(data []byte) (int, error) {
-	return fw.file.Write(data)
+	return fw.w.Write(data)
 }
 
 func (fw FileWriter) WriteByte(b byte) error {
-	_, err := fw.file.Write([]byte{b})
+	err := fw.w.WriteByte(b)
 	return err
 }
 
@@ -104,44 +109,34 @@ func (fw FileWriter) WriteLengthUint64(length uint64) error {
 }
 
 func (fw FileWriter) Flush() error {
-	return fw.file.Sync()
+	return fw.w.Flush()
 }
 
 func (fw FileWriter) Close() error {
-	return fw.file.Close()
+	return fw.w.Flush()
 }
 
 func (fw FileWriter) Pos() (int64, error) {
-	return fw.file.Seek(0, io.SeekCurrent)
+	err := fw.w.Flush()
+	if err != nil {
+		return 0, err
+	}
+
+	return fw.f.Seek(0, io.SeekCurrent)
 }
 
+// SeekPos only supports seeking to a previous position from the latest flush.
+// Seeking beyond the underlying file does not work.
 func (fw FileWriter) SeekPos(offset int64) (int64, error) {
-	return fw.file.Seek(offset, io.SeekStart)
-}
+	err := fw.w.Flush()
+	if err != nil {
+		return 0, err
+	}
+	pos, err := fw.f.Seek(offset, io.SeekStart)
+	if err != nil {
+		return 0, err
+	}
 
-func (fw FileWriter) Read(offset int64, len int64, fn func(b byte)) error {
-	initialPos, err := fw.file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-	_, err = fw.file.Seek(offset, io.SeekStart)
-	if err != nil {
-		return err
-	}
-	for len > 0 {
-		buf := make([]byte, 10)
-		read, err := fw.file.Read(buf)
-		if err != nil {
-			return err
-		}
-		for i := 0; i < read; i++ {
-			fn(buf[i])
-		}
-		if read < 10 {
-			break
-		}
-		len -= int64(read)
-	}
-	_, err = fw.file.Seek(initialPos, io.SeekStart)
-	return err
+	fw.w.Reset(fw.f)
+	return pos, nil
 }

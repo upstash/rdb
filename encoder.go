@@ -3,44 +3,43 @@ package rdb
 import (
 	"fmt"
 	"math"
-	"sync/atomic"
 	"time"
 )
 
-type Encoder struct {
-	writer       RDBWriter
+type FileEncoder struct {
+	writer       *FileWriter
 	countPos     int64
 	count        int64
 	countWithExp int64
 	backlenBuf   []byte
-	version      string
-	begin        atomic.Bool
+	redisVersion string
+	begin        bool
 }
 
-func NewFileEncoder(path string, version string) (*Encoder, error) {
+func NewFileEncoder(path string, redisVersion string) (*FileEncoder, error) {
 	w, err := newFileWriter(path)
-	if version == "" {
+	if redisVersion == "" {
 		return nil, fmt.Errorf("missing Redis version")
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &Encoder{
-		version:    version,
-		writer:     w,
-		backlenBuf: make([]byte, 5),
-		begin:      atomic.Bool{},
+	return &FileEncoder{
+		redisVersion: redisVersion,
+		writer:       w,
+		backlenBuf:   make([]byte, 5),
+		begin:        false,
 	}, nil
 }
 
-func (s *Encoder) Begin() error {
+func (s *FileEncoder) Begin() error {
 	if _, err := s.writer.Write([]byte("REDIS")); err != nil {
 		return err
 	}
 	if _, err := s.writer.Write([]byte(fmt.Sprintf("%04d", Version))); err != nil {
 		return err
 	}
-	if err := s.writeAuxField("redis-ver", s.version); err != nil {
+	if err := s.writeAuxField("redis-ver", s.redisVersion); err != nil {
 		return err
 	}
 	if err := s.writeAuxField("redis-bits", "64"); err != nil {
@@ -63,7 +62,10 @@ func (s *Encoder) Begin() error {
 	return nil
 }
 
-func (s *Encoder) WriteStringEntry(key string, value string, expiry *time.Time) error {
+func (s *FileEncoder) WriteStringEntry(key string, value string, expiry time.Time) error {
+	if s.begin {
+		return fmt.Errorf("cannot write; a collection is already being written. Call Close on the existing collection first")
+	}
 	if err := s.writeExpiry(expiry); err != nil {
 		return err
 	}
@@ -80,10 +82,11 @@ func (s *Encoder) WriteStringEntry(key string, value string, expiry *time.Time) 
 	return nil
 }
 
-func (s *Encoder) BeginHash(key string, expiry *time.Time) (*HashEncoder, error) {
-	if !s.begin.CompareAndSwap(false, true) {
+func (s *FileEncoder) BeginHash(key string, expiry time.Time) (*HashEncoder, error) {
+	if s.begin {
 		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
 	}
+	s.begin = true
 	if err := s.writeExpiry(expiry); err != nil {
 		return nil, err
 	}
@@ -95,10 +98,11 @@ func (s *Encoder) BeginHash(key string, expiry *time.Time) (*HashEncoder, error)
 	return NewHashEncoder(s)
 }
 
-func (s *Encoder) BeginHashWithMetadata(key string, expiry *time.Time) (*HashMetadataEncoder, error) {
-	if !s.begin.CompareAndSwap(false, true) {
+func (s *FileEncoder) BeginHashWithMetadata(key string, expiry time.Time) (*HashMetadataEncoder, error) {
+	if s.begin {
 		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
 	}
+	s.begin = true
 	if err := s.writeExpiry(expiry); err != nil {
 		return nil, err
 	}
@@ -110,10 +114,11 @@ func (s *Encoder) BeginHashWithMetadata(key string, expiry *time.Time) (*HashMet
 	return NewHashMetadataEncoder(s)
 }
 
-func (s *Encoder) BeginStream(key string, expiry *time.Time) (*StreamEncoder, error) {
-	if !s.begin.CompareAndSwap(false, true) {
+func (s *FileEncoder) BeginStream(key string, expiry time.Time) (*StreamEncoder, error) {
+	if s.begin {
 		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
 	}
+	s.begin = true
 	if err := s.writeExpiry(expiry); err != nil {
 		return nil, err
 	}
@@ -125,10 +130,11 @@ func (s *Encoder) BeginStream(key string, expiry *time.Time) (*StreamEncoder, er
 	return NewStreamEncoder(s)
 }
 
-func (s *Encoder) BeginList(key string, expiry *time.Time) (*ListEncoder, error) {
-	if !s.begin.CompareAndSwap(false, true) {
+func (s *FileEncoder) BeginList(key string, expiry time.Time) (*ListEncoder, error) {
+	if s.begin {
 		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
 	}
+	s.begin = true
 	if err := s.writeExpiry(expiry); err != nil {
 		return nil, err
 	}
@@ -140,10 +146,11 @@ func (s *Encoder) BeginList(key string, expiry *time.Time) (*ListEncoder, error)
 	return NewListEncoder(s)
 }
 
-func (s *Encoder) BeginSet(key string, expiry *time.Time) (*SetEncoder, error) {
-	if !s.begin.CompareAndSwap(false, true) {
+func (s *FileEncoder) BeginSet(key string, expiry time.Time) (*SetEncoder, error) {
+	if s.begin {
 		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
 	}
+	s.begin = true
 	if err := s.writeExpiry(expiry); err != nil {
 		return nil, err
 	}
@@ -155,10 +162,11 @@ func (s *Encoder) BeginSet(key string, expiry *time.Time) (*SetEncoder, error) {
 	return NewSetEncoder(s)
 }
 
-func (s *Encoder) BeginSortedSet(key string, expiry *time.Time) (*SortedSetEncoder, error) {
-	if !s.begin.CompareAndSwap(false, true) {
+func (s *FileEncoder) BeginSortedSet(key string, expiry time.Time) (*SortedSetEncoder, error) {
+	if s.begin {
 		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
 	}
+	s.begin = true
 	if err := s.writeExpiry(expiry); err != nil {
 		return nil, err
 	}
@@ -170,7 +178,10 @@ func (s *Encoder) BeginSortedSet(key string, expiry *time.Time) (*SortedSetEncod
 	return NewSortedSetEncoder(s)
 }
 
-func (s *Encoder) WriteJSON(key string, json string, expiry *time.Time) error {
+func (s *FileEncoder) WriteJSON(key string, json string, expiry time.Time) error {
+	if s.begin {
+		return fmt.Errorf("cannot write; a collection is already being written. Call Close on the existing collection first")
+	}
 	if err := s.writeExpiry(expiry); err != nil {
 		return err
 	}
@@ -196,7 +207,7 @@ func (s *Encoder) WriteJSON(key string, json string, expiry *time.Time) error {
 	return nil
 }
 
-func (s *Encoder) Close() error {
+func (s *FileEncoder) Close() error {
 	err := s.writeEOF()
 	if err != nil {
 		return err
@@ -205,15 +216,23 @@ func (s *Encoder) Close() error {
 	if err != nil {
 		return err
 	}
+	err = s.writer.Flush()
+	if err != nil {
+		return err
+	}
 	_, err = s.writer.SeekPos(s.countPos)
 	if err != nil {
 		return err
 	}
 	err = s.writeResizeDB(int(s.count), int(s.countWithExp))
+	if err != nil {
+		return err
+	}
+	err = s.writer.Flush()
 	return err
 }
 
-func (s *Encoder) writeAuxField(key, value string) error {
+func (s *FileEncoder) writeAuxField(key, value string) error {
 	if err := s.writer.WriteByte(byte(typeOpCodeAux)); err != nil {
 		return err
 	}
@@ -224,7 +243,7 @@ func (s *Encoder) writeAuxField(key, value string) error {
 	return err
 }
 
-func (s *Encoder) selectDB(dbNumber int) error {
+func (s *FileEncoder) selectDB(dbNumber int) error {
 	if err := s.writer.WriteByte(byte(typeOpCodeSelectDB)); err != nil {
 		return err
 	}
@@ -234,26 +253,25 @@ func (s *Encoder) selectDB(dbNumber int) error {
 	return nil
 }
 
-func (s *Encoder) writeResizeDB(dbSize, expiryDBSize int) error {
+func (s *FileEncoder) writeResizeDB(dbSize, expiryDBSize int) error {
 	if err := s.writer.WriteByte(byte(typeOpCodeResizeDB)); err != nil {
 		return err
 	}
 	if err := s.writer.WriteLengthUint64(uint64(dbSize)); err != nil {
 		return err
 	}
-
 	if err := s.writer.WriteLengthUint64(uint64(expiryDBSize)); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Encoder) writeEOF() error {
+func (s *FileEncoder) writeEOF() error {
 	err := s.writer.WriteByte(byte(typeOpCodeEOF))
 	return err
 }
 
-func (s *Encoder) writeTypeAndKey(t Type, key string) error {
+func (s *FileEncoder) writeTypeAndKey(t Type, key string) error {
 	if err := s.writer.WriteByte(byte(t)); err != nil {
 		return err
 	}
@@ -263,13 +281,13 @@ func (s *Encoder) writeTypeAndKey(t Type, key string) error {
 	return nil
 }
 
-func (s *Encoder) writeModuleId(id, version uint64) error {
+func (s *FileEncoder) writeModuleId(id, version uint64) error {
 	moduleID := id & 0xFFFFFFFFFFFFFC00
 	moduleID |= version & 0x000000000000003FF
 	return s.writer.WriteLength(moduleID)
 }
 
-func (s *Encoder) writeModuleString(value string) error {
+func (s *FileEncoder) writeModuleString(value string) error {
 	err := s.writer.WriteLength(moduleOpCodeString)
 	if err != nil {
 		return err
@@ -278,18 +296,18 @@ func (s *Encoder) writeModuleString(value string) error {
 	return s.writeString(value)
 }
 
-func (s *Encoder) writeModuleEOF() error {
+func (s *FileEncoder) writeModuleEOF() error {
 	return s.writer.WriteLength(moduleOpCodeEOF)
 }
 
-func (s *Encoder) writeExpiry(expiry *time.Time) error {
-	if expiry == nil {
+func (s *FileEncoder) writeExpiry(expiry time.Time) error {
+	if expiry.IsZero() {
 		return nil
 	}
 	if err := s.writer.WriteByte(byte(typeOpCodeExpireTimeMS)); err != nil {
 		return err
 	}
-	msTimestamp := uint64(time.Until(*expiry).Milliseconds())
+	msTimestamp := uint64(time.Until(expiry).Milliseconds())
 	if err := s.writer.WriteUint64(msTimestamp); err != nil {
 		return err
 	}
@@ -297,7 +315,7 @@ func (s *Encoder) writeExpiry(expiry *time.Time) error {
 	return nil
 }
 
-func (s *Encoder) writeListpackStrEntry(value string) (uint32, error) {
+func (s *FileEncoder) writeListpackStrEntry(value string) (uint32, error) {
 	// we always write 32 bit long strings for simplicity
 	err := s.writer.WriteUint8(listpackEnc32bitStrLen)
 	if err != nil {
@@ -360,7 +378,7 @@ func (s *Encoder) writeListpackStrEntry(value string) (uint32, error) {
 	return 1 + 4 + uint32(len(bytes)) + backLenLen, nil
 }
 
-func (s *Encoder) writeListpackIntEntry(value int64) (uint32, error) {
+func (s *FileEncoder) writeListpackIntEntry(value int64) (uint32, error) {
 	var encoding, encodingLen uint8
 	if math.MinInt16 <= value && value <= math.MaxInt16 {
 		encoding = listpackEncInt16
@@ -404,7 +422,7 @@ func (s *Encoder) writeListpackIntEntry(value int64) (uint32, error) {
 	return uint32(1 + encodingLen + 1), nil
 }
 
-func (s *Encoder) writeString(value string) error {
+func (s *FileEncoder) writeString(value string) error {
 	err := s.writer.WriteLength(uint64(len(value)))
 	if err != nil {
 		return err

@@ -20,7 +20,7 @@ type CollectionEncoder interface {
 }
 
 type baseCollectionEncoder struct {
-	encoder   *Encoder
+	encoder   *FileEncoder
 	length    int64
 	lengthPos int64
 }
@@ -50,7 +50,7 @@ func (s *baseCollectionEncoder) Close() error {
 		return err
 	}
 	_, err = s.encoder.writer.SeekPos(finalPos)
-	s.encoder.begin.Store(false)
+	s.encoder.begin = false
 	return err
 }
 
@@ -74,7 +74,7 @@ type ListEncoder struct {
 	baseCollectionEncoder
 }
 
-func NewListEncoder(e *Encoder) (*ListEncoder, error) {
+func NewListEncoder(e *FileEncoder) (*ListEncoder, error) {
 	encoder := &ListEncoder{}
 	encoder.encoder = e
 	err := encoder.WriteZeroLength()
@@ -82,15 +82,19 @@ func NewListEncoder(e *Encoder) (*ListEncoder, error) {
 }
 
 func (s *ListEncoder) WriteFieldStr(val string) error {
+	err := s.encoder.writeString(val)
+	if err != nil {
+		return err
+	}
 	s.length++
-	return s.encoder.writeString(val)
+	return nil
 }
 
 type SetEncoder struct {
 	baseCollectionEncoder
 }
 
-func NewSetEncoder(e *Encoder) (*SetEncoder, error) {
+func NewSetEncoder(e *FileEncoder) (*SetEncoder, error) {
 	encoder := &SetEncoder{}
 	encoder.encoder = e
 	err := encoder.WriteZeroLength()
@@ -101,15 +105,19 @@ func NewSetEncoder(e *Encoder) (*SetEncoder, error) {
 }
 
 func (s *SetEncoder) WriteFieldStr(field string) error {
+	err := s.encoder.writeString(field)
+	if err != nil {
+		return err
+	}
 	s.length++
-	return s.encoder.writeString(field)
+	return nil
 }
 
 type SortedSetEncoder struct {
 	baseCollectionEncoder
 }
 
-func NewSortedSetEncoder(e *Encoder) (*SortedSetEncoder, error) {
+func NewSortedSetEncoder(e *FileEncoder) (*SortedSetEncoder, error) {
 	encoder := &SortedSetEncoder{}
 	encoder.encoder = e
 	err := encoder.WriteZeroLength()
@@ -137,7 +145,7 @@ type HashEncoder struct {
 	baseCollectionEncoder
 }
 
-func NewHashEncoder(e *Encoder) (*HashEncoder, error) {
+func NewHashEncoder(e *FileEncoder) (*HashEncoder, error) {
 	encoder := &HashEncoder{}
 	encoder.encoder = e
 	err := encoder.WriteZeroLength()
@@ -164,19 +172,27 @@ type HashMetadataEncoder struct {
 	baseCollectionEncoder
 }
 
-func NewHashMetadataEncoder(e *Encoder) (*HashMetadataEncoder, error) {
+func NewHashMetadataEncoder(e *FileEncoder) (*HashMetadataEncoder, error) {
 	encoder := &HashMetadataEncoder{}
 	encoder.encoder = e
-	err := encoder.WriteZeroLength()
+	// Redis optimizes storage by placing the minimum expiration timestamp at the start
+	// and then writing only the diff for fields.
+	// Since we don't know the minimum expiration timestamp, we write a dummy value here.
+	// All the expiration timestamps written with fields will be absolute.
+	err := e.writer.WriteUint64(0)
+	if err != nil {
+		return nil, err
+	}
+	err = encoder.WriteZeroLength()
 	if err != nil {
 		return nil, err
 	}
 	return encoder, nil
 }
 
-func (s *HashMetadataEncoder) WriteFieldStrStrWithExpiry(key string, value string, expiry *time.Time) error {
+func (s *HashMetadataEncoder) WriteFieldStrStrWithExpiry(key string, value string, expiry time.Time) error {
 	ms := int64(0)
-	if expiry != nil {
+	if !expiry.IsZero() {
 		ms = expiry.UnixMilli()
 	}
 	err := s.encoder.writer.WriteLength(uint64(ms))

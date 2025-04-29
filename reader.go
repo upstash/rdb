@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 )
 
 // ReadValue reads the single RDB value given in the payload into the handler.
@@ -1324,18 +1325,26 @@ func (r *valueReader) ReadStreamListpacks3(
 // <ttl> is a length encoded integer representing the expiration time of the field (0 means no TTL)
 // <field> is a string
 // <value> is a string
-func (r *valueReader) ReadHashMetadata(cb func(string, string, uint64) error) error {
+func (r *valueReader) ReadHashMetadata(cb func(string, string, time.Time) error) error {
+	minExpirationTs, err := r.readUint64()
+	if err != nil {
+		return err
+	}
+
 	length, _, err := r.readLen()
 	if err != nil {
 		return err
 	}
 
 	for i := 0; i < int(length); i++ {
-		ttl, _, err := r.readLen()
+		expVal, _, err := r.readLen()
 		if err != nil {
 			return err
 		}
-
+		var exp time.Time
+		if expVal > 0 {
+			exp = time.UnixMilli(int64(minExpirationTs + expVal))
+		}
 		field, err := r.ReadString()
 		if err != nil {
 			return err
@@ -1346,7 +1355,7 @@ func (r *valueReader) ReadHashMetadata(cb func(string, string, uint64) error) er
 			return err
 		}
 
-		err = cb(field, value, ttl)
+		err = cb(field, value, exp)
 		if err != nil {
 			return err
 		}
@@ -1359,7 +1368,15 @@ func (r *valueReader) ReadHashMetadata(cb func(string, string, uint64) error) er
 // For each hash field value TTL triplet read, the cb is called with that triplet.
 // It has the same structure as the listpack. The listpack consists of
 // field-value-ttl triplets, which are <lpentry> values stored back to back.
-func (r *valueReader) ReadHashListpackEx(cb func(string, string, uint64) error) error {
+func (r *valueReader) ReadHashListpackEx(cb func(string, string, time.Time) error) error {
+	t, err := r.readUint64()
+	if err != nil {
+		return err
+	}
+	// minExpire
+	// This value was serialized for future use-case of streaming the object
+	// directly to FLASH (while keeping in mem its next expiration time)
+	_ = time.UnixMilli(int64(t))
 	listpack, err := r.ReadString()
 	if err != nil {
 		return err
@@ -1403,17 +1420,16 @@ func (r *valueReader) ReadHashListpackEx(cb func(string, string, uint64) error) 
 			return err
 		}
 
-		ttlStr, err := reader.readListpackEntry()
+		expStr, err := reader.readListpackEntry()
+		if err != nil {
+			return err
+		}
+		expVal, err := strconv.ParseInt(expStr, 10, 64)
 		if err != nil {
 			return err
 		}
 
-		ttl, err := strconv.ParseUint(ttlStr, 10, 64)
-		if err != nil {
-			return err
-		}
-
-		err = cb(field, value, ttl)
+		err = cb(field, value, time.UnixMilli(expVal))
 		if err != nil {
 			return err
 		}

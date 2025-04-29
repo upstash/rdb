@@ -21,7 +21,7 @@ func TestEncoder_String(t *testing.T) {
 		name   string
 		key    string
 		value  string
-		expiry *time.Time
+		expiry time.Time
 	}{
 		{
 			name:  "empty string",
@@ -49,13 +49,10 @@ func TestEncoder_String(t *testing.T) {
 			value: generateAlphabetCycle(142),
 		},
 		{
-			name:  "with expiry",
-			key:   "with-expiry",
-			value: "expires soon",
-			expiry: func() *time.Time {
-				t := time.Now().Add(time.Hour)
-				return &t
-			}(),
+			name:   "with expiry",
+			key:    "with-expiry",
+			value:  "expires soon",
+			expiry: time.Now().Add(time.Hour),
 		},
 	}
 
@@ -73,8 +70,8 @@ func TestEncoder_String(t *testing.T) {
 
 	for _, tc := range tests {
 		require.Equal(t, db.strings[tc.key], tc.value)
-		if tc.expiry != nil {
-			require.WithinDuration(t, time.Now().Add(db.expireTimes[tc.key]), *tc.expiry, time.Second*30)
+		if !tc.expiry.IsZero() {
+			require.WithinDuration(t, time.Now().Add(db.expireTimes[tc.key]), tc.expiry, time.Second*30)
 		}
 	}
 
@@ -91,7 +88,7 @@ func TestEncoder_List(t *testing.T) {
 	listKey := "test-list"
 	values := []string{"a", "b", "c", "1", "2", "3", "def"}
 
-	listEncoder, err := encoder.BeginList(listKey, nil)
+	listEncoder, err := encoder.BeginList(listKey, time.Time{})
 	require.NoError(t, err)
 
 	for _, val := range values {
@@ -121,7 +118,7 @@ func TestEncoder_Set(t *testing.T) {
 	setKey := "test-set"
 	values := []string{"hello", "world", "1", "2", "3", "upstash"}
 
-	setEncoder, err := encoder.BeginSet(setKey, nil)
+	setEncoder, err := encoder.BeginSet(setKey, time.Time{})
 	require.NoError(t, err)
 
 	for _, val := range values {
@@ -156,7 +153,7 @@ func TestEncoder_Hash(t *testing.T) {
 		"efgh": "upstash",
 	}
 
-	hashEncoder, err := encoder.BeginHash(hashKey, nil)
+	hashEncoder, err := encoder.BeginHash(hashKey, time.Time{})
 	require.NoError(t, err)
 
 	for field, value := range hashValues {
@@ -188,14 +185,14 @@ func TestEncoder_HashWithMetadata(t *testing.T) {
 	fieldValues := []struct {
 		field  string
 		value  string
-		expiry *time.Time
+		expiry time.Time
 	}{
-		{field: "a", value: "1", expiry: nil},
-		{field: "b", value: "2", expiry: getTimePtr(now.Add(time.Hour))},
-		{field: "c", value: "3", expiry: getTimePtr(now.Add(2 * time.Hour))},
+		{field: "a", value: "1", expiry: time.Time{}},
+		{field: "b", value: "2", expiry: now.Add(time.Hour)},
+		{field: "c", value: "3", expiry: now.Add(2 * time.Hour)},
 	}
 
-	hashEncoder, err := encoder.BeginHashWithMetadata(hashKey, nil)
+	hashEncoder, err := encoder.BeginHashWithMetadata(hashKey, time.Time{})
 	require.NoError(t, err)
 
 	for _, fv := range fieldValues {
@@ -215,7 +212,7 @@ func TestEncoder_HashWithMetadata(t *testing.T) {
 	require.Equal(t, db.hashes[hashKey]["a"], "1")
 	require.Equal(t, db.hashes[hashKey]["b"], "2")
 	require.Equal(t, db.hashes[hashKey]["c"], "3")
-	require.Equal(t, db.hashExpireTimes[hashKey]["a"], time.UnixMilli(0))
+	require.Zero(t, db.hashExpireTimes[hashKey]["a"])
 	require.WithinDuration(t, db.hashExpireTimes[hashKey]["b"], now.Add(time.Hour), time.Second)
 	require.WithinDuration(t, db.hashExpireTimes[hashKey]["c"], now.Add(time.Hour*2), time.Second)
 	require.WithinDuration(t, db.hashExpireTimes[hashKey]["c"], now.Add(time.Hour*2), time.Second)
@@ -239,7 +236,7 @@ func TestEncoder_SortedSet(t *testing.T) {
 		"posinf": math.Inf(1),
 	}
 
-	zsetEncoder, err := encoder.BeginSortedSet(zsetKey, nil)
+	zsetEncoder, err := encoder.BeginSortedSet(zsetKey, time.Time{})
 	require.NoError(t, err)
 
 	for elem, score := range zsetValues {
@@ -282,7 +279,7 @@ func TestEncoder_Stream(t *testing.T) {
 		},
 	}
 
-	streamEncoder, err := encoder.BeginStream(streamKey, nil)
+	streamEncoder, err := encoder.BeginStream(streamKey, time.Time{})
 	require.NoError(t, err)
 
 	for _, entry := range entries {
@@ -351,7 +348,7 @@ func TestEncoder_JSON(t *testing.T) {
 		]
 	}`
 
-	err = encoder.WriteJSON(jsonKey, jsonValue, nil)
+	err = encoder.WriteJSON(jsonKey, jsonValue, time.Time{})
 	require.NoError(t, err)
 
 	require.NoError(t, encoder.Close())
@@ -361,8 +358,4 @@ func TestEncoder_JSON(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, db.modules[jsonKey], jsonValue)
-}
-
-func getTimePtr(t time.Time) *time.Time {
-	return &t
 }

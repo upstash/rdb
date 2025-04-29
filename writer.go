@@ -137,20 +137,29 @@ func (w *Writer) WriteHash(hash map[string]string) error {
 
 type HashEntry struct {
 	Value          string
-	ExpirationTime *time.Time
+	ExpirationTime time.Time
 }
 
 // WriteHashWithMetadata writes the given hash as the TypeHashMetadata with expiration metadata for each field.
 func (w *Writer) WriteHashWithMetadata(hash map[string]HashEntry) error {
+	// Redis writes minimum expiration time at the begining and then
+	// writes only the diff for the individual elements to reduce the disk size.
+	// However, it's not efficient for us to infer the minimum expire time here.
+	// So, we write it as 0 and write absolute duration.
+	err := w.writeUint64(0)
+	if err != nil {
+		return err
+	}
+
 	n := len(hash)
-	err := w.writeLen(uint64(n))
+	err = w.writeLen(uint64(n))
 	if err != nil {
 		return err
 	}
 
 	for key, value := range hash {
 		ms := int64(0)
-		if value.ExpirationTime != nil {
+		if !value.ExpirationTime.IsZero() {
 			ms = value.ExpirationTime.UnixMilli()
 		}
 		err = w.writeLen(uint64(ms))
@@ -333,10 +342,6 @@ func (w *Writer) writeListpackIntEntry(value int64) (uint32, error) {
 
 	// +1 for the first byte, specifying the encoding
 	err = w.writeUint8(1 + encodingLen)
-	if err != nil {
-		return 0, err
-	}
-
 	if err != nil {
 		return 0, err
 	}

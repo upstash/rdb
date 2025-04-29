@@ -1328,10 +1328,10 @@ func TestReadHashWithExpiration(t *testing.T) {
 	require.Equal(t, TypeHashMetadata, ot)
 
 	hash := make(map[string]hashFieldWithExp)
-	cb := func(field, value string, ttl uint64) error {
+	cb := func(field, value string, exp time.Time) error {
 		hash[field] = hashFieldWithExp{
 			value: value,
-			exp:   time.UnixMilli(int64(ttl)),
+			exp:   exp,
 		}
 		return nil
 	}
@@ -1365,22 +1365,18 @@ func TestReadHashWithExpirationListpack(t *testing.T) {
 	require.Equal(t, TypeHashListpackEx, ot)
 
 	hash := make(map[string]hashFieldWithExp)
-	cb := func(field, value string, ttl uint64) error {
+	cb := func(field, value string, exp time.Time) error {
 		hash[field] = hashFieldWithExp{
 			value: value,
-			exp:   time.UnixMilli(int64(ttl)),
+			exp:   exp,
 		}
 		return nil
 	}
 	err = r.ReadHashListpackEx(cb)
 	require.NoError(t, err)
-	require.Equal(t,
-		map[string]hashFieldWithExp{
-			"myfield": {
-				value: "myvalue",
-				exp:   time.Unix(2216202057, 0),
-			},
-		},
-		hash,
-	)
+
+	entry, exists := hash["myfield"]
+	assert.True(t, exists)
+	assert.Equal(t, entry.value, "myvalue")
+	assert.WithinDuration(t, entry.exp, time.Unix(2216202057, 0), time.Second)
 }

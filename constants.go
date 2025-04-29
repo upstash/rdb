@@ -5,28 +5,30 @@ const Version uint16 = 12
 type Type uint8
 
 const (
-	TypeString           Type = 0
-	TypeList             Type = 1
-	TypeSet              Type = 2
-	TypeZset             Type = 3
-	TypeHash             Type = 4
-	TypeZset2            Type = 5
-	TypeModule2          Type = 7 // module pre ga with type 6 is not supported
-	TypeHashZipmap       Type = 9 // type 8 seems unused by Redis
-	TypeListZiplist      Type = 10
-	TypeSetIntset        Type = 11
-	TypeZsetZiplist      Type = 12
-	TypeHashZiplist      Type = 13
-	TypeListQuicklist    Type = 14
-	TypeStreamListpacks  Type = 15
-	TypeHashListpack     Type = 16
-	TypeZsetListpack     Type = 17
-	TypeListQuicklist2   Type = 18
-	TypeStreamListpacks2 Type = 19
-	TypeSetListpack      Type = 20
-	TypeStreamListpacks3 Type = 21
-	TypeHashMetadata     Type = 22
-	TypeHashListpackEx   Type = 23
+	TypeString              Type = 0
+	TypeList                Type = 1
+	TypeSet                 Type = 2
+	TypeZset                Type = 3
+	TypeHash                Type = 4
+	TypeZset2               Type = 5
+	TypeModule2             Type = 7 // module pre ga with type 6 is not supported
+	TypeHashZipmap          Type = 9 // type 8 seems unused by Redis
+	TypeListZiplist         Type = 10
+	TypeSetIntset           Type = 11
+	TypeZsetZiplist         Type = 12
+	TypeHashZiplist         Type = 13
+	TypeListQuicklist       Type = 14
+	TypeStreamListpacks     Type = 15
+	TypeHashListpack        Type = 16
+	TypeZsetListpack        Type = 17
+	TypeListQuicklist2      Type = 18
+	TypeStreamListpacks2    Type = 19
+	TypeSetListpack         Type = 20
+	TypeStreamListpacks3    Type = 21
+	TypeHashMetadataPreGa   Type = 22 // pre-ga type is not supported
+	TypeHashListpackExPreGa Type = 23 // pre-ga type is not supported.
+	TypeHashMetadata        Type = 24
+	TypeHashListpackEx      Type = 25
 )
 
 const (

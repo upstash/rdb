@@ -5,13 +5,13 @@ import (
 )
 
 type StreamEncoder struct {
-	encoder     *Encoder
+	encoder     *FileEncoder
 	entryLength int64
 	lengthPos   int64
 	masterIDBuf []byte
 }
 
-func NewStreamEncoder(e *Encoder) (*StreamEncoder, error) {
+func NewStreamEncoder(e *FileEncoder) (*StreamEncoder, error) {
 	s := &StreamEncoder{
 		encoder:     e,
 		masterIDBuf: make([]byte, 16),
