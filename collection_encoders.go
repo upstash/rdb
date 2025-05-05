@@ -193,7 +193,7 @@ func NewHashMetadataEncoder(e *FileEncoder) (*HashMetadataEncoder, error) {
 func (s *HashMetadataEncoder) WriteFieldStrStrWithExpiry(key string, value string, expiry time.Time) error {
 	ms := int64(0)
 	if !expiry.IsZero() {
-		ms = expiry.UnixMilli()
+		ms = expiry.UnixMilli() + 1
 	}
 	err := s.encoder.writer.WriteLength(uint64(ms))
 	if err != nil {
