@@ -1319,10 +1319,11 @@ func (r *valueReader) ReadStreamListpacks3(
 // ReadHashMetadata reads the next hash object with per-field TTLs.
 // For each hash field value pair read, the cb is called with that pair and its TTL.
 // The hash has the following form:
-// <len><ttl><field><value>...<ttl><field><value>
+// <min_exp><len><ttl><field><value>...<ttl><field><value>
 // where
+// <min_exp> is a length encoded integer representing the minimum expiration timestamp of hash fields
 // <len> is a length encoded integer, and there are exactly <len> <ttl><field><value> triplets.
-// <ttl> is a length encoded integer representing the expiration time of the field (0 means no TTL)
+// <ttl> is a length encoded integer representing the relative difference to minExpire (with +1 to avoid 0 that already taken)
 // <field> is a string
 // <value> is a string
 func (r *valueReader) ReadHashMetadata(cb func(string, string, time.Time) error) error {
@@ -1343,7 +1344,7 @@ func (r *valueReader) ReadHashMetadata(cb func(string, string, time.Time) error)
 		}
 		var exp time.Time
 		if expVal > 0 {
-			exp = time.UnixMilli(int64(minExpirationTs + expVal))
+			exp = time.UnixMilli(int64(minExpirationTs + expVal - 1))
 		}
 		field, err := r.ReadString()
 		if err != nil {
