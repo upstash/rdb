@@ -20,6 +20,7 @@ type dummyDB struct {
 	streamEntries     map[string][]StreamEntry
 	streamGroups      map[string][]StreamConsumerGroup
 	expireTimes       map[string]time.Duration
+	hashExpireTimes   map[string]map[string]time.Time
 	listEntriesRead   map[string]uint64
 	zsetEntriesRead   map[string]uint64
 	streamEntriesRead map[string]uint64
@@ -40,6 +41,7 @@ func newDummyDB() *dummyDB {
 		listEntriesRead:   make(map[string]uint64),
 		zsetEntriesRead:   make(map[string]uint64),
 		streamEntriesRead: make(map[string]uint64),
+		hashExpireTimes:   make(map[string]map[string]time.Time),
 	}
 }
 
@@ -153,6 +155,29 @@ func (db *dummyDB) HandleStreamEnding(key string, entriesRead uint64) {
 
 func (db *dummyDB) HandleExpireTime(key string, expireTime time.Duration) {
 	db.expireTimes[key] = expireTime
+}
+
+func (db *dummyDB) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
+	return func(field string, value string, exp time.Time) error {
+		hash, ok := db.hashes[key]
+		if !ok {
+			hash = make(map[string]string)
+		}
+
+		hash[field] = value
+		db.hashes[key] = hash
+
+		hashExpireTimes, ok := db.hashExpireTimes[key]
+		if !ok {
+			hashExpireTimes = make(map[string]time.Time)
+		}
+
+		if !exp.IsZero() {
+			hashExpireTimes[field] = exp
+			db.hashExpireTimes[key] = hashExpireTimes
+		}
+		return nil
+	}
 }
 
 var dumpsPath = filepath.Join("testdata", "dumps")

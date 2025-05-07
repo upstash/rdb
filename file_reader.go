@@ -238,7 +238,7 @@ func readFile(path string, handler FileHandler, maxLz77StrLen uint64) error {
 				return err
 			}
 		default:
-			if t > TypeStreamListpacks3 {
+			if t > TypeHashListpackEx {
 				return fmt.Errorf("unknown RDB encoding type %d", t)
 			}
 

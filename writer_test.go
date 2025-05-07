@@ -51,7 +51,7 @@ func TestWriteString(t *testing.T) {
 			err = writer.WriteString(value)
 			require.NoError(t, err)
 
-			err = writer.WriteChecksum(10)
+			err = writer.WriteChecksum(Version)
 			require.NoError(t, err)
 
 			require.Equal(t, dump, writer.GetBuffer())
@@ -151,7 +151,7 @@ func TestWriteZset(t *testing.T) {
 	err = writer.WriteZset(elements, scores)
 	require.NoError(t, err)
 
-	err = writer.WriteChecksum(8)
+	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
 	require.Equal(t, dump, writer.GetBuffer())

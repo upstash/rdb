@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 )
 
 // ReadValue reads the single RDB value given in the payload into the handler.
@@ -147,6 +148,12 @@ func (r *valueReader) readObject(key string, t Type, handler ValueHandler) error
 		if err == nil {
 			handler.HandleStreamEnding(key, read)
 		}
+	case TypeHashMetadata:
+		h := handler.HashWithExpEntryHandler(key)
+		err = r.ReadHashMetadata(h)
+	case TypeHashListpackEx:
+		h := handler.HashWithExpEntryHandler(key)
+		err = r.ReadHashListpackEx(h)
 	default:
 		err = fmt.Errorf("unknown RDB object type %d", t)
 	}
@@ -1307,6 +1314,139 @@ func (r *valueReader) ReadStreamListpacks3(
 	groupCB func(StreamConsumerGroup) error,
 ) (uint64, error) {
 	return r.readStreamListpacks0(TypeStreamListpacks3, entryCB, groupCB)
+}
+
+// ReadHashMetadata reads the next hash object with per-field TTLs.
+// For each hash field value pair read, the cb is called with that pair and its TTL.
+// The hash has the following form:
+// <min_exp><len><ttl><field><value>...<ttl><field><value>
+// where
+// <min_exp> is a length encoded integer representing the minimum expiration timestamp of hash fields
+// <len> is a length encoded integer, and there are exactly <len> <ttl><field><value> triplets.
+// <ttl> is a length encoded integer representing the relative difference to minExpire (with +1 to avoid 0 that already taken)
+// <field> is a string
+// <value> is a string
+func (r *valueReader) ReadHashMetadata(cb func(string, string, time.Time) error) error {
+	minExpirationTs, err := r.readUint64()
+	if err != nil {
+		return err
+	}
+
+	length, _, err := r.readLen()
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < int(length); i++ {
+		expVal, _, err := r.readLen()
+		if err != nil {
+			return err
+		}
+		var exp time.Time
+		if expVal > 0 {
+			exp = time.UnixMilli(int64(minExpirationTs + expVal - 1))
+		}
+		field, err := r.ReadString()
+		if err != nil {
+			return err
+		}
+
+		value, err := r.ReadString()
+		if err != nil {
+			return err
+		}
+
+		err = cb(field, value, exp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ReadHashListpackEx reads the next hash object with per-field TTLs stored in a listpack.
+// For each hash field value TTL triplet read, the cb is called with that triplet.
+// It has the same structure as the listpack. The listpack consists of
+// field-value-ttl triplets, which are <lpentry> values stored back to back.
+func (r *valueReader) ReadHashListpackEx(cb func(string, string, time.Time) error) error {
+	t, err := r.readUint64()
+	if err != nil {
+		return err
+	}
+	// minExpire
+	// This value was serialized for future use-case of streaming the object
+	// directly to FLASH (while keeping in mem its next expiration time)
+	_ = time.UnixMilli(int64(t))
+	listpack, err := r.ReadString()
+	if err != nil {
+		return err
+	}
+
+	reader := valueReader{
+		buf:           newMemoryBackedBuffer(stringToBytes(listpack)),
+		maxLz77StrLen: r.maxLz77StrLen,
+	}
+
+	// <lpbytes>
+	if err := reader.skip(4); err != nil {
+		return err
+	}
+
+	lplen, err := reader.readUint16()
+	if err != nil {
+		return err
+	}
+
+	var limit int
+	if lplen == listpackLenBig {
+		limit = math.MaxInt
+	} else {
+		limit = int(lplen)
+	}
+
+	// Read entries in triplets (field, value, TTL)
+	for i := 0; i < limit; i += 3 {
+		field, err := reader.readListpackEntry()
+		if err == errLPUnexpectedEnd && limit == math.MaxInt {
+			// The listpack size was unbounded and we read <lpend>, as expected
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		value, err := reader.readListpackEntry()
+		if err != nil {
+			return err
+		}
+
+		expStr, err := reader.readListpackEntry()
+		if err != nil {
+			return err
+		}
+		expVal, err := strconv.ParseInt(expStr, 10, 64)
+		if err != nil {
+			return err
+		}
+
+		err = cb(field, value, time.UnixMilli(expVal))
+		if err != nil {
+			return err
+		}
+	}
+
+	// <lplen> was < 65535, we should read the <lpend>
+	lpend, err := reader.readUint8()
+	if err != nil {
+		return err
+	}
+
+	if lpend != listpackEnd {
+		return errLPUnexpectedEnd
+	}
+
+	return nil
 }
 
 // Listpack is a string that represents the list entries.

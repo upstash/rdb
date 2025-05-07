@@ -1,6 +1,6 @@
 module github.com/upstash/rdb
 
-go 1.20
+go 1.23
 
 require (
 	github.com/ohler55/ojg v1.18.7
