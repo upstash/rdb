@@ -10,7 +10,7 @@ type CollectionEncoder interface {
 
 	WriteFieldStrStr(key string, value string) error
 
-	WriteFieldStrStrWithExpiry(key string, value string, expiry *time.Time) error
+	WriteFieldStrStrWithExpiry(key string, value string, expiry time.Time) error
 
 	WriteFieldStr(field string) error
 
@@ -66,7 +66,7 @@ func (s *baseCollectionEncoder) WriteFieldStrFloat64(field string, value float64
 	panic("implement me")
 }
 
-func (s *baseCollectionEncoder) WriteFieldStrStrWithExpiry(key string, value string, expiry *time.Time) error {
+func (s *baseCollectionEncoder) WriteFieldStrStrWithExpiry(key string, value string, expiry time.Time) error {
 	panic("implement me")
 }
 
