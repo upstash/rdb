@@ -309,6 +309,7 @@ func TestEncoder_Stream(t *testing.T) {
 
 	err = streamEncoder.Close()
 	require.NoError(t, err)
+	require.False(t, encoder.begin)
 
 	require.NoError(t, encoder.Close())
 
