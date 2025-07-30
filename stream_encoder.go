@@ -330,5 +330,6 @@ func (s *StreamEncoder) Close() error {
 		return err
 	}
 	_, err = s.encoder.writer.SeekPos(finalPos)
+	s.encoder.begin = false
 	return err
 }
