@@ -107,6 +107,36 @@ func main() {
 }
 ```
 
+### Verifying a reader
+
+The following code demonstrates how to verify an io.Reader to reads an RDB file is not corrupt, and
+does not exceed the defined limits of the total data, max entry, and max key sizes.
+
+```go
+import (
+	"io"
+	"log"
+
+	"github.com/upstash/rdb"
+)
+
+func main() {
+	opts := rdb.VerifyReaderOptions{
+		MaxDataSize:  256 << 20, // 256 MB
+		MaxEntrySize: 100 << 20, // 100 MB
+		MaxStreamPELSize: 1000,
+	}
+	
+	var r io.Reader
+	// initialize reader
+	
+	err := rdb.VerifyReader(r, opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
 ### Verifying a value
 
 The following code demonstrates how to verify an RDB value is not corrupt, and

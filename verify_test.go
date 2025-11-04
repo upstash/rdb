@@ -10,15 +10,23 @@ import (
 
 var allTypesRDBPath = filepath.Join(dumpsPath, "all-types.rdb")
 var streamWithPELRDBPath = filepath.Join(dumpsPath, "stream-with-pel.rdb")
+var badCrcRDBPath = filepath.Join(dumpsPath, "bad-crc.rdb")
 var stringRDBValuePath = filepath.Join(valueDumpsPath, "string.bin")
 var streamWithPELRDBValuePath = filepath.Join(valueDumpsPath, "stream-listpacks3.bin")
 
 func TestVerifyFile(t *testing.T) {
 	err := VerifyFile(allTypesRDBPath, VerifyFileOptions{})
 	require.NoError(t, err)
+}
 
-	err = VerifyFile(streamWithPELRDBPath, VerifyFileOptions{})
+func TestVerifyFile_withPEL(t *testing.T) {
+	err := VerifyFile(streamWithPELRDBPath, VerifyFileOptions{})
 	require.NoError(t, err)
+}
+
+func TestVerifyFile_BadCrc(t *testing.T) {
+	err := VerifyFile(badCrcRDBPath, VerifyFileOptions{})
+	require.ErrorContains(t, err, "CRC")
 }
 
 func TestVerifyFile_maxDataSize(t *testing.T) {
@@ -81,4 +89,89 @@ func TestVerifyValue_maxStreamPELSize(t *testing.T) {
 		MaxStreamPELSize: 1,
 	})
 	require.ErrorContains(t, err, "max stream pel size")
+}
+
+func TestVerifyReader(t *testing.T) {
+	file, err := os.Open(allTypesRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{})
+	require.NoError(t, err)
+}
+
+func TestVerifyReader_withPEL(t *testing.T) {
+	file, err := os.Open(streamWithPELRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{})
+	require.NoError(t, err)
+}
+
+func TestReaderFile_maxDataSize(t *testing.T) {
+	file, err := os.Open(allTypesRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		MaxDataSize: 10,
+	})
+	require.ErrorContains(t, err, "max data size")
+}
+
+func TestVerifyReader_maxEntrySize(t *testing.T) {
+	file, err := os.Open(allTypesRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		MaxEntrySize: 5,
+	})
+	require.ErrorContains(t, err, "max entry size")
+}
+
+func TestVerifyReader_maxKeySize(t *testing.T) {
+	file, err := os.Open(allTypesRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		MaxKeySize: 1,
+	})
+	require.ErrorContains(t, err, "max key size")
+}
+
+func TestVerifyReader_maxStreamPELSize(t *testing.T) {
+	file, err := os.Open(streamWithPELRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		MaxStreamPELSize: 1,
+	})
+	require.ErrorContains(t, err, "max stream pel size")
+}
+
+func TestVerifyReader_BadCrc(t *testing.T) {
+	file, err := os.Open(badCrcRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{})
+	require.ErrorContains(t, err, "CRC")
 }

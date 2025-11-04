@@ -1,7 +1,6 @@
 package rdb
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +15,10 @@ type bufferView interface {
 type buffer interface {
 	Get(n int) ([]byte, error)
 	Pos() int
+	SupportsView() bool
 	View(pos int) (bufferView, error)
+	DoNotCalcCrc()
+	Crc() uint64
 }
 
 type memoryBackedBuffer struct {
@@ -46,8 +48,20 @@ func (b *memoryBackedBuffer) Pos() int {
 	return b.pos
 }
 
+func (b *memoryBackedBuffer) DoNotCalcCrc() {
+	// nop
+}
+
+func (b *memoryBackedBuffer) Crc() uint64 {
+	return 0
+}
+
 type memoryBackedBufferView struct {
 	buf *memoryBackedBuffer
+}
+
+func (b *memoryBackedBuffer) SupportsView() bool {
+	return true
 }
 
 func (b *memoryBackedBuffer) View(pos int) (bufferView, error) {
@@ -68,12 +82,51 @@ func (v *memoryBackedBufferView) Pos() int {
 	return v.buf.Pos()
 }
 
-func (v *memoryBackedBufferView) View(pos int) (bufferView, error) {
-	return nil, errors.New("cannot take a view of a view")
+func (v *memoryBackedBufferView) DoNotCalcCrc() {
+	// nop
+}
+
+func (v *memoryBackedBufferView) Crc() uint64 {
+	return 0
+}
+
+func (v *memoryBackedBufferView) SupportsView() bool {
+	return false
+}
+
+func (v *memoryBackedBufferView) View(_ int) (bufferView, error) {
+	return nil, nil
 }
 
 func (v *memoryBackedBufferView) Close() error {
 	return nil
+}
+
+type crcCalculator struct {
+	crc         uint64
+	checkedLen  int
+	fileLen     int
+	doNotUpdate bool
+}
+
+func (c *crcCalculator) Update(b []byte) {
+	if c.doNotUpdate {
+		return
+	}
+
+	limit := c.fileLen - crcLen
+	if c.checkedLen+len(b) > limit {
+		// we don't want to update crc with more than the limit we know.
+		// there might be more bytes after limit(i.e. crc footer),
+		// but updating the crc with them would result in a wrong crc.
+		b = b[:limit-c.checkedLen]
+	}
+
+	c.crc = getCRC(c.crc, b)
+}
+
+func (c *crcCalculator) Crc() uint64 {
+	return c.crc
 }
 
 type fileBackedBuffer struct {
@@ -84,8 +137,7 @@ type fileBackedBuffer struct {
 	buf     []byte
 	len     int
 	pos     int
-	calcCRC bool
-	crc     uint64
+	crcCalc *crcCalculator
 }
 
 func newFileBackedBuffer(file *os.File, fileLen int, bufCap int) *fileBackedBuffer {
@@ -94,6 +146,12 @@ func newFileBackedBuffer(file *os.File, fileLen int, bufCap int) *fileBackedBuff
 		fileLen: fileLen,
 		bufCap:  bufCap,
 		buf:     make([]byte, 0),
+		crcCalc: &crcCalculator{
+			crc:         0,
+			checkedLen:  0,
+			fileLen:     fileLen,
+			doNotUpdate: false,
+		},
 	}
 }
 
@@ -128,6 +186,10 @@ type fileBackedBufferView struct {
 	buf  *fileBackedBuffer
 }
 
+func (b *fileBackedBuffer) SupportsView() bool {
+	return true
+}
+
 func (b *fileBackedBuffer) View(pos int) (bufferView, error) {
 	// reopen the same file, and seek to the current position
 	file, err := os.Open(b.file.Name())
@@ -135,7 +197,7 @@ func (b *fileBackedBuffer) View(pos int) (bufferView, error) {
 		return nil, err
 	}
 
-	shouldSeek := int64(headerLen + pos)
+	shouldSeek := int64(pos)
 	seek, err := file.Seek(shouldSeek, 0) // from the start
 	if err != nil {
 		_ = file.Close()
@@ -164,17 +226,28 @@ func (v *fileBackedBufferView) Pos() int {
 	return v.buf.Pos()
 }
 
-func (v *fileBackedBufferView) View(pos int) (bufferView, error) {
-	return nil, errors.New("cannot take a view of a view")
+func (v *fileBackedBufferView) DoNotCalcCrc() {
+	// nop
+}
+
+func (v *fileBackedBufferView) Crc() uint64 {
+	return 0
+}
+
+func (v *fileBackedBufferView) SupportsView() bool {
+	return false
+}
+
+func (v *fileBackedBufferView) View(_ int) (bufferView, error) {
+	return nil, nil
 }
 
 func (v *fileBackedBufferView) Close() error {
 	return v.file.Close()
 }
 
-func (b *fileBackedBuffer) initCRC(payload []byte) {
-	b.calcCRC = true
-	b.crc = getCRC(b.crc, payload)
+func (b *fileBackedBuffer) DoNotCalcCrc() {
+	b.crcCalc.doNotUpdate = true
 }
 
 // caller must guarantee that there are at least n bytes in the file starting
@@ -200,9 +273,6 @@ func (b *fileBackedBuffer) read(n int) error {
 	b.len = len(dst)
 	b.pos = 0
 
-	// we don't want to read more than the file len we know. there might
-	// be more bytes after file len, but reading them would result
-	// in a wrong CRC calculation.
 	readLen := minInt(b.len, b.fileLen-b.filePos) - remaining
 	read, err := b.file.Read(b.buf[remaining : remaining+readLen])
 	if err != nil {
@@ -213,9 +283,71 @@ func (b *fileBackedBuffer) read(n int) error {
 		return fmt.Errorf("expected to read %d bytes, but it was %d", readLen, read)
 	}
 
-	if b.calcCRC {
-		b.crc = getCRC(b.crc, b.buf[remaining:remaining+readLen])
+	if b.crcCalc != nil {
+		b.crcCalc.Update(b.buf[remaining : remaining+readLen])
 	}
 
 	return nil
+}
+
+func (b *fileBackedBuffer) Crc() uint64 {
+	return b.crcCalc.Crc()
+}
+
+func newForwardOnlyBuffer(r io.Reader) buffer {
+	return &forwardOnlyBuffer{
+		reader:  r,
+		calcCRC: true,
+		crc:     0,
+	}
+}
+
+type forwardOnlyBuffer struct {
+	reader  io.Reader
+	calcCRC bool
+	crc     uint64
+}
+
+func (f *forwardOnlyBuffer) Get(n int) ([]byte, error) {
+	b := make([]byte, n)
+	remaining := n
+
+	for remaining > 0 {
+		read, err := f.reader.Read(b[n-remaining:])
+		if err != nil {
+			return nil, err
+		}
+
+		if read == 0 {
+			return nil, io.ErrUnexpectedEOF
+		}
+
+		remaining -= read
+	}
+
+	if f.calcCRC {
+		f.crc = getCRC(f.crc, b)
+	}
+
+	return b, nil
+}
+
+func (f *forwardOnlyBuffer) Pos() int {
+	return 0
+}
+
+func (f *forwardOnlyBuffer) DoNotCalcCrc() {
+	f.calcCRC = false
+}
+
+func (f *forwardOnlyBuffer) Crc() uint64 {
+	return f.crc
+}
+
+func (f *forwardOnlyBuffer) SupportsView() bool {
+	return false
+}
+
+func (f *forwardOnlyBuffer) View(_ int) (bufferView, error) {
+	return nil, nil
 }

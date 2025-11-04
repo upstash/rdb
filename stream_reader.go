@@ -48,14 +48,28 @@ func (r *valueReader) readStreamListpacks0(
 	entryCB func(StreamEntry) error,
 	groupCB func(StreamConsumerGroup) error,
 ) (uint64, error) {
-	entriesView, err := r.buf.View(r.buf.Pos())
-	if err != nil {
-		return 0, err
+	var entriesView bufferView
+	var groupsView bufferView
+	supportsView := r.buf.SupportsView()
+
+	if supportsView {
+		var err error
+		entriesView, err = r.buf.View(r.buf.Pos())
+
+		if err != nil {
+			return 0, err
+		}
+
+		defer entriesView.Close()
 	}
-	defer entriesView.Close()
 
 	// first pass over entries, we read all into cb
-	err = r.readStreamEntries(entryCB)
+	var read uint64
+	err := r.readStreamEntries(func(entry StreamEntry) error {
+		read++
+		return entryCB(entry)
+	})
+
 	if err != nil {
 		return 0, err
 	}
@@ -102,80 +116,92 @@ func (r *valueReader) readStreamListpacks0(
 		}
 	}
 
-	groupsView, err := r.buf.View(r.buf.Pos())
-	if err != nil {
-		return 0, err
-	}
-	defer groupsView.Close()
+	if supportsView {
+		groupsView, err = r.buf.View(r.buf.Pos())
+		if err != nil {
+			return 0, err
 
-	// first pass over group, we detect all the pending entries in the stream
-	pendingEntries := make(map[StreamID][]string)
-	err = r.readStreamConsumerGroups(t, func(group StreamConsumerGroup) error {
-		for _, c := range group.Consumers {
-			for _, pe := range c.PendingEntries {
-				pendingEntries[pe.Entry.ID] = nil // value will be set later
-			}
 		}
 
-		return nil
-	})
-	if err != nil {
-		return 0, err
+		defer groupsView.Close()
 	}
 
-	entriesViewReader := valueReader{
-		buf:           entriesView,
-		maxLz77StrLen: r.maxLz77StrLen,
-	}
-
-	var read uint64
-	// second pass over entries, we read the values of the pending entries we collected above
-	// and calculate the number of entries read.
-	err = entriesViewReader.readStreamEntries(func(entry StreamEntry) error {
-		read++
-		if _, ok := pendingEntries[entry.ID]; ok {
-			pendingEntries[entry.ID] = entry.Value
-		}
-
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	groupsViewReader := valueReader{
-		buf:           groupsView,
-		maxLz77StrLen: r.maxLz77StrLen,
-	}
-
-	// second pass over entries, we read all into cb, after setting the pending entry values
-	err = groupsViewReader.readStreamConsumerGroups(t, func(group StreamConsumerGroup) error {
-		for _, c := range group.Consumers {
-			for _, pe := range c.PendingEntries {
-				pe.Entry.Value = pendingEntries[pe.Entry.ID]
-				if pe.Entry.Value == nil {
-					return errors.New("illegal state: an entry is in PEL but there is no corresponding entry in stream")
+	if supportsView {
+		// first pass over groups, we detect all the pending entries in the stream
+		pendingEntries := make(map[StreamID][]string)
+		err = r.readStreamConsumerGroups(t, func(group StreamConsumerGroup) error {
+			for _, c := range group.Consumers {
+				for _, pe := range c.PendingEntries {
+					pendingEntries[pe.Entry.ID] = nil // value will be set later
 				}
 			}
 
-			sort.Slice(c.PendingEntries, func(i, j int) bool {
-				a, b := c.PendingEntries[i].Entry.ID, c.PendingEntries[j].Entry.ID
+			return nil
+		})
 
-				if a.Millis < b.Millis {
-					return true
-				} else if a.Millis > b.Millis {
-					return false
-				} else {
-					return a.Seq < b.Seq
-				}
-			})
+		if err != nil {
+			return 0, err
 		}
 
-		return groupCB(group)
-	})
+		entriesViewReader := valueReader{
+			buf:           entriesView,
+			maxLz77StrLen: r.maxLz77StrLen,
+		}
 
-	if err != nil {
-		return 0, err
+		// second pass over entries, we read the values of the pending entries we collected above
+		err = entriesViewReader.readStreamEntries(func(entry StreamEntry) error {
+			if _, ok := pendingEntries[entry.ID]; ok {
+				pendingEntries[entry.ID] = entry.Value
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return 0, err
+		}
+
+		groupsViewReader := valueReader{
+			buf:           groupsView,
+			maxLz77StrLen: r.maxLz77StrLen,
+		}
+
+		// second pass over consumer groups, we read all into cb, after setting the pending entry values
+		err = groupsViewReader.readStreamConsumerGroups(t, func(group StreamConsumerGroup) error {
+			for _, c := range group.Consumers {
+				for _, pe := range c.PendingEntries {
+					pe.Entry.Value = pendingEntries[pe.Entry.ID]
+					if pe.Entry.Value == nil {
+						return errors.New("illegal state: an entry is in PEL but there is no corresponding entry in stream")
+					}
+				}
+
+				sort.Slice(c.PendingEntries, func(i, j int) bool {
+					a, b := c.PendingEntries[i].Entry.ID, c.PendingEntries[j].Entry.ID
+
+					if a.Millis < b.Millis {
+						return true
+					} else if a.Millis > b.Millis {
+						return false
+					} else {
+						return a.Seq < b.Seq
+					}
+				})
+			}
+
+			return groupCB(group)
+		})
+
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		// first pass over groups, we call the callback without pending entry values
+		err = r.readStreamConsumerGroups(t, groupCB)
+
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return read, nil
