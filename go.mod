@@ -1,10 +1,10 @@
 module github.com/upstash/rdb
 
-go 1.23
+go 1.24
 
 require (
-	github.com/ohler55/ojg v1.18.7
-	github.com/stretchr/testify v1.8.4
+	github.com/ohler55/ojg v1.26.11
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
