@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"time"
@@ -22,10 +21,24 @@ const crcLen = 8
 // with Upstash yet. These parts include function data, multiple databases(any database other than 0),
 // and unsupported modules.
 func ReadFile(path string, handler FileHandler) error {
-	return readFile(path, handler, 0)
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	fileLen := info.Size()
+	buf := newFileBackedBuffer(file, int(fileLen), minInt(int(fileLen), 1<<20))
+
+	return readFile(buf, handler, 0)
 }
 
-func readFile(path string, handler FileHandler, maxLz77StrLen uint64) error {
+func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 	// An RDB file has the following form:
 	// <magic><version>[<select-db>[<resize-db>]<entry>*]*[<aux>*][<module-aux>*][<function>*]<eof>[<crc>]
 	// where
@@ -61,20 +74,9 @@ func readFile(path string, handler FileHandler, maxLz77StrLen uint64) error {
 	// After that, there might be a 8 byte unsigned integer describing the CRC-64 of the file content.
 	// The <crc> is added in RDB version 5, and after that version, it is always there. The RDB CRC calculation
 	// might be disabled in the database configuration. In that case, it has the value of 0.
-	file, err := os.Open(path)
+	header, err := buf.Get(headerLen)
 	if err != nil {
 		return err
-	}
-	defer file.Close()
-
-	header := make([]byte, headerLen)
-	n, err := file.Read(header)
-	if err != nil {
-		return err
-	}
-
-	if n != headerLen {
-		return io.ErrUnexpectedEOF
 	}
 
 	if bytesToString(header[:magicLen]) != magicStr {
@@ -92,21 +94,8 @@ func readFile(path string, handler FileHandler, maxLz77StrLen uint64) error {
 
 	endsWithCRC := version >= 5
 
-	info, err := file.Stat()
-	if err != nil {
-		return err
-	}
-
-	fileLen := info.Size() - headerLen
-	if endsWithCRC {
-		// We don't want to read CRC bytes.
-		// CRC is calculated excluding the last 8 bytes of the payload.
-		fileLen -= crcLen
-	}
-
-	buf := newFileBackedBuffer(file, int(fileLen), minInt(int(fileLen), 1<<20))
-	if endsWithCRC {
-		buf.initCRC(header)
+	if !endsWithCRC {
+		buf.DoNotCalcCrc()
 	}
 
 	reader := &valueReader{
@@ -130,24 +119,21 @@ func readFile(path string, handler FileHandler, maxLz77StrLen uint64) error {
 				return nil
 			}
 
-			n, err := file.Read(header)
+			buf.DoNotCalcCrc()
+			crcFooter, err := buf.Get(crcLen)
 			if err != nil {
 				return err
 			}
 
-			if n != crcLen {
-				return errors.New("unexpected CRC length at the end of the RDB file")
-			}
-
-			crc := binary.LittleEndian.Uint64(header[:crcLen])
+			crc := binary.LittleEndian.Uint64(crcFooter)
 			if crc == 0 {
 				// crc calculation can be disabled by the redis config.
 				// if it is disabled, the crc bytes are still there but
-				// it is equai to 0.
+				// it is equal to 0.
 				return nil
 			}
 
-			if buf.crc != crc {
+			if buf.Crc() != crc {
 				return errors.New("wrong CRC at the end of the RDB file")
 			}
 

@@ -37,8 +37,7 @@ func TestMemoryBackedBuffer_view(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte{4, 5, 6}, b)
 
-	_, err = view.View(3)
-	require.Error(t, err)
+	require.False(t, view.SupportsView())
 
 	_, err = view.Get(10)
 	require.Error(t, err)
@@ -46,7 +45,7 @@ func TestMemoryBackedBuffer_view(t *testing.T) {
 	err = view.Close()
 	require.NoError(t, err)
 
-	// view should not effect the iteration of buf
+	// view should not affect the iteration of buf
 	b, err = buf.Get(5)
 	require.NoError(t, err)
 	require.Equal(t, []byte{1, 2, 3, 4, 5}, b)
@@ -87,7 +86,7 @@ func TestFileBackedBuffer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected, b)
 
-	require.Equal(t, uint64(0), buf.crc) // because we didn't initialize it
+	require.Equal(t, uint64(0xfe908173263acf4a), buf.Crc())
 }
 
 func TestFileBackedBuffer_readMoreThanBufCap(t *testing.T) {
@@ -106,7 +105,7 @@ func TestFileBackedBuffer_readMoreThanBufCap(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected, b)
 
-	require.Equal(t, uint64(0), buf.crc) // because we didn't initialize it
+	require.Equal(t, uint64(0x3bfa104f9b118f4d), buf.Crc())
 }
 
 func TestFileBackedBuffer_outOfBoundsAccess(t *testing.T) {
@@ -134,8 +133,7 @@ func TestFileBackedBuffer_crc(t *testing.T) {
 	require.NoError(t, err)
 	defer file.Close()
 
-	buf := newFileBackedBuffer(file, int(fileLen), 2048)
-	buf.initCRC(nil)
+	buf := newFileBackedBuffer(file, int(fileLen+crcLen), 2048)
 
 	expected := make([]byte, 2048)
 	for i := 0; i < 2048; i++ {
@@ -146,7 +144,7 @@ func TestFileBackedBuffer_crc(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected, b)
 
-	require.Equal(t, uint64(9267225763363821280), buf.crc)
+	require.Equal(t, uint64(9267225763363821280), buf.Crc())
 }
 
 func TestFileBackedBuffer_view(t *testing.T) {
@@ -168,8 +166,8 @@ func TestFileBackedBuffer_view(t *testing.T) {
 	}()
 
 	expected := make([]byte, 1042)
-	for i := 264; i < 1306; i++ { // +9 because of skipping header len
-		expected[i-264] = byte(i % 256)
+	for i := 255; i < 1297; i++ {
+		expected[i-255] = byte(i % 256)
 	}
 
 	b, err = view.Get(100)
@@ -180,13 +178,12 @@ func TestFileBackedBuffer_view(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected[100:], b)
 
-	_, err = view.View(3)
-	require.Error(t, err)
+	require.False(t, view.SupportsView())
 
 	_, err = view.Get(10_000)
 	require.Error(t, err)
 
-	// view should not effect the iteration of buf
+	// view should not affect the iteration of buf
 	b, err = buf.Get(5)
 	require.NoError(t, err)
 	require.Equal(t, []byte{255, 0, 1, 2, 3}, b)

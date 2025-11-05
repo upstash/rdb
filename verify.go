@@ -2,7 +2,9 @@ package rdb
 
 import (
 	"errors"
+	"io"
 	"math"
+	"os"
 	"time"
 )
 
@@ -49,7 +51,62 @@ func VerifyFile(path string, opts VerifyFileOptions) error {
 		maxStreamPELSize: opts.MaxStreamPELSize,
 	}
 
-	return readFile(path, v, uint64(opts.MaxEntrySize))
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	fileLen := info.Size()
+	buf := newFileBackedBuffer(file, int(fileLen), minInt(int(fileLen), 1<<20))
+
+	return readFile(buf, v, uint64(opts.MaxEntrySize))
+}
+
+type VerifyReaderOptions struct {
+	MaxDataSize      int
+	MaxEntrySize     int
+	MaxKeySize       int
+	MaxStreamPELSize int
+}
+
+func (o *VerifyReaderOptions) maybeSetDefaults() {
+	if o.MaxDataSize <= 0 {
+		o.MaxDataSize = defaultMaxDataSize
+	}
+
+	if o.MaxEntrySize <= 0 {
+		o.MaxEntrySize = defaultMaxEntrySize
+	}
+
+	if o.MaxKeySize <= 0 {
+		o.MaxKeySize = defaultMaxKeySize
+	}
+
+	if o.MaxStreamPELSize <= 0 {
+		o.MaxStreamPELSize = defaultMaxStreamPELSize
+	}
+}
+
+// VerifyReader verifies that the given RDB reader is not corrupt,
+// or does not exceed the limits in the given options.
+func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
+	opts.maybeSetDefaults()
+	v := &verifier{
+		maxDataSize:      opts.MaxDataSize,
+		maxEntrySize:     opts.MaxEntrySize,
+		maxKeySize:       opts.MaxKeySize,
+		maxStreamPELSize: opts.MaxStreamPELSize,
+	}
+
+	buf := newForwardOnlyBuffer(r)
+
+	return readFile(buf, v, uint64(opts.MaxEntrySize))
 }
 
 type VerifyValueOptions struct {
