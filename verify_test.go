@@ -13,6 +13,8 @@ var streamWithPELRDBPath = filepath.Join(dumpsPath, "stream-with-pel.rdb")
 var badCrcRDBPath = filepath.Join(dumpsPath, "bad-crc.rdb")
 var stringRDBValuePath = filepath.Join(valueDumpsPath, "string.bin")
 var streamWithPELRDBValuePath = filepath.Join(valueDumpsPath, "stream-listpacks3.bin")
+var multiDBRDBPath = filepath.Join(dumpsPath, "multi-db.rdb")
+var withPaddingRDBPath = filepath.Join(dumpsPath, "with-padding.rdb")
 
 func TestVerifyFile(t *testing.T) {
 	err := VerifyFile(allTypesRDBPath, VerifyFileOptions{})
@@ -22,6 +24,30 @@ func TestVerifyFile(t *testing.T) {
 func TestVerifyFile_withPEL(t *testing.T) {
 	err := VerifyFile(streamWithPELRDBPath, VerifyFileOptions{})
 	require.NoError(t, err)
+}
+
+func TestVerifyFile_AllowPartialRead(t *testing.T) {
+	err := VerifyFile(multiDBRDBPath, VerifyFileOptions{
+		AllowPartialVerify: true,
+	})
+	require.NoError(t, err)
+
+	err = VerifyFile(multiDBRDBPath, VerifyFileOptions{
+		AllowPartialVerify: false,
+	})
+	require.ErrorContains(t, err, "partial restore")
+}
+
+func TestVerifyFile_RequireStrictEOF(t *testing.T) {
+	err := VerifyFile(withPaddingRDBPath, VerifyFileOptions{
+		RequireStrictEOF: false,
+	})
+	require.NoError(t, err)
+
+	err = VerifyFile(withPaddingRDBPath, VerifyFileOptions{
+		RequireStrictEOF: true,
+	})
+	require.ErrorContains(t, err, "eof")
 }
 
 func TestVerifyFile_BadCrc(t *testing.T) {
@@ -174,4 +200,46 @@ func TestVerifyReader_BadCrc(t *testing.T) {
 
 	err = VerifyReader(file, VerifyReaderOptions{})
 	require.ErrorContains(t, err, "CRC")
+}
+
+func TestVerifyReader_AllowPartialRead(t *testing.T) {
+	file, err := os.Open(multiDBRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		AllowPartialVerify: true,
+	})
+	require.NoError(t, err)
+
+	_, err = file.Seek(0, 0)
+	require.NoError(t, err)
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		AllowPartialVerify: false,
+	})
+	require.ErrorContains(t, err, "partial restore")
+}
+
+func TestVerifyReader_RequireStrictEOF(t *testing.T) {
+	file, err := os.Open(withPaddingRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		RequireStrictEOF: false,
+	})
+	require.NoError(t, err)
+
+	_, err = file.Seek(0, 0)
+	require.NoError(t, err)
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		RequireStrictEOF: true,
+	})
+	require.ErrorContains(t, err, "eof")
 }

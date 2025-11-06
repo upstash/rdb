@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -115,26 +116,27 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 
 		switch t {
 		case typeOpCodeEOF:
-			if !endsWithCRC {
-				return nil
+			if endsWithCRC {
+				buf.DoNotCalcCrc()
+				crcFooter, err := buf.Get(crcLen)
+				if err != nil {
+					return err
+				}
+
+				crc := binary.LittleEndian.Uint64(crcFooter)
+				if crc != 0 && buf.Crc() != crc {
+					// crc calculation can be disabled by the redis config.
+					// if it is disabled, the crc bytes are still there but
+					// it is equal to 0.
+					return errors.New("wrong CRC at the end of the RDB file")
+				}
 			}
 
-			buf.DoNotCalcCrc()
-			crcFooter, err := buf.Get(crcLen)
-			if err != nil {
-				return err
-			}
-
-			crc := binary.LittleEndian.Uint64(crcFooter)
-			if crc == 0 {
-				// crc calculation can be disabled by the redis config.
-				// if it is disabled, the crc bytes are still there but
-				// it is equal to 0.
-				return nil
-			}
-
-			if buf.Crc() != crc {
-				return errors.New("wrong CRC at the end of the RDB file")
+			if handler.RequireStrictEOF() {
+				_, err = buf.Get(1)
+				if err != io.EOF {
+					return errors.New("required file to end after eof opcode")
+				}
 			}
 
 			return nil

@@ -36,6 +36,10 @@ func newMemoryBackedBuffer(buf []byte) *memoryBackedBuffer {
 
 func (b *memoryBackedBuffer) Get(n int) ([]byte, error) {
 	if b.len < b.pos+n {
+		if b.len == b.pos {
+			return nil, io.EOF
+		}
+
 		return nil, io.ErrUnexpectedEOF
 	}
 
@@ -158,6 +162,10 @@ func newFileBackedBuffer(file *os.File, fileLen int, bufCap int) *fileBackedBuff
 func (b *fileBackedBuffer) Get(n int) ([]byte, error) {
 	if b.fileLen < b.filePos+n {
 		// we use the file pos as the source of truth
+		if b.fileLen == b.filePos {
+			return nil, io.EOF
+		}
+
 		return nil, io.ErrUnexpectedEOF
 	}
 
