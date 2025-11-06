@@ -16,10 +16,12 @@ var defaultMaxStreamPELSize = 1000
 const maxStreamStrSize = math.MaxUint32
 
 type VerifyFileOptions struct {
-	MaxDataSize      int
-	MaxEntrySize     int
-	MaxKeySize       int
-	MaxStreamPELSize int
+	MaxDataSize        int
+	MaxEntrySize       int
+	MaxKeySize         int
+	MaxStreamPELSize   int
+	AllowPartialVerify bool
+	RequireStrictEOF   bool
 }
 
 func (o *VerifyFileOptions) maybeSetDefaults() {
@@ -45,10 +47,12 @@ func (o *VerifyFileOptions) maybeSetDefaults() {
 func VerifyFile(path string, opts VerifyFileOptions) error {
 	opts.maybeSetDefaults()
 	v := &verifier{
-		maxDataSize:      opts.MaxDataSize,
-		maxEntrySize:     opts.MaxEntrySize,
-		maxKeySize:       opts.MaxKeySize,
-		maxStreamPELSize: opts.MaxStreamPELSize,
+		maxDataSize:        opts.MaxDataSize,
+		maxEntrySize:       opts.MaxEntrySize,
+		maxKeySize:         opts.MaxKeySize,
+		maxStreamPELSize:   opts.MaxStreamPELSize,
+		allowPartialVerify: opts.AllowPartialVerify,
+		requireStrictEOF:   opts.RequireStrictEOF,
 	}
 
 	file, err := os.Open(path)
@@ -69,10 +73,12 @@ func VerifyFile(path string, opts VerifyFileOptions) error {
 }
 
 type VerifyReaderOptions struct {
-	MaxDataSize      int
-	MaxEntrySize     int
-	MaxKeySize       int
-	MaxStreamPELSize int
+	MaxDataSize        int
+	MaxEntrySize       int
+	MaxKeySize         int
+	MaxStreamPELSize   int
+	AllowPartialVerify bool
+	RequireStrictEOF   bool
 }
 
 func (o *VerifyReaderOptions) maybeSetDefaults() {
@@ -98,10 +104,12 @@ func (o *VerifyReaderOptions) maybeSetDefaults() {
 func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
 	opts.maybeSetDefaults()
 	v := &verifier{
-		maxDataSize:      opts.MaxDataSize,
-		maxEntrySize:     opts.MaxEntrySize,
-		maxKeySize:       opts.MaxKeySize,
-		maxStreamPELSize: opts.MaxStreamPELSize,
+		maxDataSize:        opts.MaxDataSize,
+		maxEntrySize:       opts.MaxEntrySize,
+		maxKeySize:         opts.MaxKeySize,
+		maxStreamPELSize:   opts.MaxStreamPELSize,
+		allowPartialVerify: opts.AllowPartialVerify,
+		requireStrictEOF:   opts.RequireStrictEOF,
 	}
 
 	buf := newForwardOnlyBuffer(r)
@@ -147,11 +155,13 @@ var errMaxStreamPELSizeExceeded = errors.New("max stream pel size is exceeded")
 var errMaxStreamStrSizeExceeded = errors.New("max stream string item size is exceeded")
 
 type verifier struct {
-	maxDataSize      int
-	maxEntrySize     int
-	maxKeySize       int
-	maxStreamPELSize int
-	dataSize         int
+	maxDataSize        int
+	maxEntrySize       int
+	maxKeySize         int
+	maxStreamPELSize   int
+	allowPartialVerify bool
+	requireStrictEOF   bool
+	dataSize           int
 }
 
 func (v *verifier) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
@@ -425,7 +435,11 @@ func (v *verifier) StreamGroupHandler(key string) func(group StreamConsumerGroup
 }
 
 func (v *verifier) AllowPartialRead() bool {
-	return true
+	return v.allowPartialVerify
+}
+
+func (v *verifier) RequireStrictEOF() bool {
+	return v.requireStrictEOF
 }
 
 func (v *verifier) HandleExpireTime(key string, expireTime time.Duration) {

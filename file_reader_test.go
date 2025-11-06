@@ -49,6 +49,10 @@ func (db *dummyDB) AllowPartialRead() bool {
 	return db.partialRead
 }
 
+func (db *dummyDB) RequireStrictEOF() bool {
+	return false
+}
+
 func (db *dummyDB) HandleString(key, value string) error {
 	db.strings[key] = value
 	return nil
