@@ -15,6 +15,7 @@ var stringRDBValuePath = filepath.Join(valueDumpsPath, "string.bin")
 var streamWithPELRDBValuePath = filepath.Join(valueDumpsPath, "stream-listpacks3.bin")
 var multiDBRDBPath = filepath.Join(dumpsPath, "multi-db.rdb")
 var withPaddingRDBPath = filepath.Join(dumpsPath, "with-padding.rdb")
+var bigDumpPath = filepath.Join(dumpsPath, "big.rdb")
 
 func TestVerifyFile(t *testing.T) {
 	err := VerifyFile(allTypesRDBPath, VerifyFileOptions{})
@@ -83,6 +84,11 @@ func TestVerifyFile_maxStreamPELSize(t *testing.T) {
 	require.ErrorContains(t, err, "max stream pel size")
 }
 
+func TestVerifyFile_biggerThanBufferSizeFile(t *testing.T) {
+	err := VerifyFile(bigDumpPath, VerifyFileOptions{})
+	require.NoError(t, err)
+}
+
 func TestVerifyValue(t *testing.T) {
 	dump, err := os.ReadFile(stringRDBValuePath)
 	require.NoError(t, err)
@@ -121,7 +127,7 @@ func TestVerifyReader(t *testing.T) {
 	file, err := os.Open(allTypesRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{})
@@ -132,7 +138,7 @@ func TestVerifyReader_withPEL(t *testing.T) {
 	file, err := os.Open(streamWithPELRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{})
@@ -143,7 +149,7 @@ func TestReaderFile_maxDataSize(t *testing.T) {
 	file, err := os.Open(allTypesRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{
@@ -156,7 +162,7 @@ func TestVerifyReader_maxEntrySize(t *testing.T) {
 	file, err := os.Open(allTypesRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{
@@ -169,7 +175,7 @@ func TestVerifyReader_maxKeySize(t *testing.T) {
 	file, err := os.Open(allTypesRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{
@@ -182,7 +188,7 @@ func TestVerifyReader_maxStreamPELSize(t *testing.T) {
 	file, err := os.Open(streamWithPELRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{
@@ -195,7 +201,7 @@ func TestVerifyReader_BadCrc(t *testing.T) {
 	file, err := os.Open(badCrcRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{})
@@ -206,7 +212,7 @@ func TestVerifyReader_AllowPartialRead(t *testing.T) {
 	file, err := os.Open(multiDBRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{
@@ -227,7 +233,7 @@ func TestVerifyReader_RequireStrictEOF(t *testing.T) {
 	file, err := os.Open(withPaddingRDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	err = VerifyReader(file, VerifyReaderOptions{
