@@ -127,6 +127,7 @@ func (c *crcCalculator) Update(b []byte) {
 	}
 
 	c.crc = getCRC(c.crc, b)
+	c.checkedLen += len(b)
 }
 
 func (c *crcCalculator) Crc() uint64 {
