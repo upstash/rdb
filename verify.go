@@ -178,36 +178,6 @@ type verifier struct {
 	dataSize           int
 }
 
-func (v *verifier) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
-	if len(key) > v.maxKeySize {
-		return func(field, value string, exp time.Time) error {
-			return errMaxKeySizeExceeded(len(key), v.maxKeySize)
-		}
-	}
-
-	v.dataSize += len(key)
-	if v.dataSize > v.maxDataSize {
-		return func(field, value string, exp time.Time) error {
-			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
-		}
-	}
-
-	var entrySize int
-	return func(field, value string, exp time.Time) error {
-		entrySize += len(field) + len(value) + 8
-		if entrySize > v.maxEntrySize {
-			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
-		}
-
-		v.dataSize += entrySize
-		if v.dataSize > v.maxDataSize {
-			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
-		}
-
-		return nil
-	}
-}
-
 func (v *verifier) HandleString(key string, value string) error {
 	if len(key) > v.maxKeySize {
 		return errMaxKeySizeExceeded(len(key), v.maxKeySize)
@@ -241,12 +211,44 @@ func (v *verifier) HashEntryHandler(key string) func(field string, value string)
 
 	var entrySize int
 	return func(field, value string) error {
-		entrySize += len(field) + len(value)
+		elementSize := len(field) + len(value)
+		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
 		}
 
-		v.dataSize += entrySize
+		v.dataSize += elementSize
+		if v.dataSize > v.maxDataSize {
+			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
+		}
+
+		return nil
+	}
+}
+
+func (v *verifier) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
+	if len(key) > v.maxKeySize {
+		return func(field, value string, exp time.Time) error {
+			return errMaxKeySizeExceeded(len(key), v.maxKeySize)
+		}
+	}
+
+	v.dataSize += len(key)
+	if v.dataSize > v.maxDataSize {
+		return func(field, value string, exp time.Time) error {
+			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
+		}
+	}
+
+	var entrySize int
+	return func(field, value string, exp time.Time) error {
+		elementSize := len(field) + len(value) + 8
+		entrySize += elementSize
+		if entrySize > v.maxEntrySize {
+			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
+		}
+
+		v.dataSize += elementSize
 		if v.dataSize > v.maxDataSize {
 			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
 		}
@@ -271,12 +273,13 @@ func (v *verifier) ListEntryHandler(key string) func(elem string) error {
 
 	var entrySize int
 	return func(elem string) error {
-		entrySize += len(elem)
+		elementSize := len(elem)
+		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
 		}
 
-		v.dataSize += entrySize
+		v.dataSize += elementSize
 		if v.dataSize > v.maxDataSize {
 			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
 		}
@@ -301,12 +304,13 @@ func (v *verifier) SetEntryHandler(key string) func(elem string) error {
 
 	var entrySize int
 	return func(elem string) error {
-		entrySize += len(elem)
+		elementSize := len(elem)
+		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
 		}
 
-		v.dataSize += entrySize
+		v.dataSize += elementSize
 		if v.dataSize > v.maxDataSize {
 			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
 		}
@@ -331,12 +335,13 @@ func (v *verifier) ZsetEntryHandler(key string) func(elem string, score float64)
 
 	var entrySize int
 	return func(elem string, score float64) error {
-		entrySize += len(elem) + 8
+		elementSize := len(elem) + 8
+		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
 		}
 
-		v.dataSize += entrySize
+		v.dataSize += elementSize
 		if v.dataSize > v.maxDataSize {
 			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
 		}
@@ -402,35 +407,37 @@ func (v *verifier) StreamEntryHandler(key string) func(entry StreamEntry) error 
 func (v *verifier) StreamGroupHandler(key string) func(group StreamConsumerGroup) error {
 	var entrySize int
 	return func(group StreamConsumerGroup) error {
+		var groupSize int
 		if len(group.Name) > maxStreamStrSize {
 			return errMaxStreamStrSizeExceeded(len(group.Name), maxStreamStrSize)
 		}
 
-		entrySize += len(group.Name) + 24 // 8: LastID#Seq + 8: LastID#Millis + 8: EntriesRead
+		groupSize += len(group.Name) + 24 // 8: LastID#Seq + 8: LastID#Millis + 8: EntriesRead
 
 		for _, consumer := range group.Consumers {
 			if len(consumer.Name) > maxStreamStrSize {
 				return errMaxStreamStrSizeExceeded(len(consumer.Name), maxStreamStrSize)
 			}
 
-			entrySize += len(consumer.Name) + 16 // 8: SeenTime + 8: ActiveTime
+			groupSize += len(consumer.Name) + 16 // 8: SeenTime + 8: ActiveTime
 
 			if len(consumer.PendingEntries) > v.maxStreamPELSize {
 				return errMaxStreamPELSizeExceeded(len(consumer.PendingEntries), v.maxStreamPELSize)
 			}
 
 			for _, pe := range consumer.PendingEntries {
-				entrySize += 32 // 8: ID#Seq + 8: ID#Millis + 8: DeliveryCount + 8: DeliveryTime
+				groupSize += 32 // 8: ID#Seq + 8: ID#Millis + 8: DeliveryCount + 8: DeliveryTime
 
 				for _, val := range pe.Entry.Value {
 					if len(val) > maxStreamStrSize {
 						return errMaxStreamStrSizeExceeded(len(val), maxStreamStrSize)
 					}
 
-					entrySize += len(val)
+					groupSize += len(val)
 				}
 			}
 		}
+		entrySize += groupSize
 
 		// unlike normal stream entries, pending entries are stored both on disk
 		// and memory.
@@ -439,7 +446,7 @@ func (v *verifier) StreamGroupHandler(key string) func(group StreamConsumerGroup
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
 		}
 
-		v.dataSize += entrySize
+		v.dataSize += groupSize
 		if v.dataSize > v.maxDataSize {
 			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
 		}
