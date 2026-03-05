@@ -24,6 +24,7 @@ type dummyDB struct {
 	listEntriesRead   map[string]uint64
 	zsetEntriesRead   map[string]uint64
 	streamEntriesRead map[string]uint64
+	libraries         []string
 }
 
 func newDummyDB() *dummyDB {
@@ -42,6 +43,7 @@ func newDummyDB() *dummyDB {
 		zsetEntriesRead:   make(map[string]uint64),
 		streamEntriesRead: make(map[string]uint64),
 		hashExpireTimes:   make(map[string]map[string]time.Time),
+		libraries:         make([]string, 0),
 	}
 }
 
@@ -184,6 +186,11 @@ func (db *dummyDB) HashWithExpEntryHandler(key string) func(field string, value 
 	}
 }
 
+func (db *dummyDB) HandleLibrary(code string) error {
+	db.libraries = append(db.libraries, code)
+	return nil
+}
+
 var dumpsPath = filepath.Join("testdata", "dumps")
 
 func TestFileReader_PreV5_withoutCRC(t *testing.T) {
@@ -270,11 +277,9 @@ func TestFileReader_withFreqInfo(t *testing.T) {
 func TestFileReader_function(t *testing.T) {
 	db := newDummyDB()
 	err := ReadFile(filepath.Join(dumpsPath, "function.rdb"), db)
-	require.ErrorContains(t, err, "restoring function payload is not supported when the partial restore is not allowed")
-
-	db.partialRead = true
-	err = ReadFile(filepath.Join(dumpsPath, "function.rdb"), db)
 	require.NoError(t, err)
+
+	require.Len(t, db.libraries, 1)
 }
 
 func TestFileReader_expireTimeSec(t *testing.T) {

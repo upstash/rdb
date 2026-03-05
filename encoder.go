@@ -207,6 +207,16 @@ func (s *FileEncoder) WriteJSON(key string, json string, expiry time.Time) error
 	return nil
 }
 
+func (s *FileEncoder) WriteLibrary(code string) error {
+	if s.begin {
+		return fmt.Errorf("cannot write; a collection is already being written. Call Close on the existing collection first")
+	}
+	if err := s.writer.WriteByte(byte(typeOpCodeFunction2)); err != nil {
+		return err
+	}
+	return s.writeString(code)
+}
+
 func (s *FileEncoder) Close() error {
 	err := s.writeEOF()
 	if err != nil {
