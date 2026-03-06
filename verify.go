@@ -84,6 +84,7 @@ type VerifyReaderOptions struct {
 	MaxEntrySize       int
 	MaxKeySize         int
 	MaxStreamPELSize   int
+	MaxLibrarySize     int
 	AllowPartialVerify bool
 	RequireStrictEOF   bool
 }
@@ -104,6 +105,10 @@ func (o *VerifyReaderOptions) maybeSetDefaults() {
 	if o.MaxStreamPELSize <= 0 {
 		o.MaxStreamPELSize = defaultMaxStreamPELSize
 	}
+
+	if o.MaxLibrarySize <= 0 {
+		o.MaxLibrarySize = defaultMaxLibrarySize
+	}
 }
 
 // VerifyReader verifies that the given RDB reader is not corrupt,
@@ -115,6 +120,7 @@ func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
 		maxEntrySize:       opts.MaxEntrySize,
 		maxKeySize:         opts.MaxKeySize,
 		maxStreamPELSize:   opts.MaxStreamPELSize,
+		maxLibrarySize:     opts.MaxLibrarySize,
 		allowPartialVerify: opts.AllowPartialVerify,
 		requireStrictEOF:   opts.RequireStrictEOF,
 	}
