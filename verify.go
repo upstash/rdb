@@ -12,6 +12,7 @@ var defaultMaxDataSize = 256 << 20  // 256 MB
 var defaultMaxEntrySize = 100 << 20 // 100 MB
 var defaultMaxKeySize = 32 << 10    // 32 KB
 var defaultMaxStreamPELSize = 1000
+var defaultMaxLibrarySize = 100 << 20 // 100 MB
 
 const maxStreamStrSize = math.MaxUint32
 
@@ -20,6 +21,7 @@ type VerifyFileOptions struct {
 	MaxEntrySize       int
 	MaxKeySize         int
 	MaxStreamPELSize   int
+	MaxLibrarySize     int
 	AllowPartialVerify bool
 	RequireStrictEOF   bool
 }
@@ -40,6 +42,10 @@ func (o *VerifyFileOptions) maybeSetDefaults() {
 	if o.MaxStreamPELSize <= 0 {
 		o.MaxStreamPELSize = defaultMaxStreamPELSize
 	}
+
+	if o.MaxLibrarySize <= 0 {
+		o.MaxLibrarySize = defaultMaxLibrarySize
+	}
 }
 
 // VerifyFile verifies that the given RDB file is not corrupt,
@@ -51,6 +57,7 @@ func VerifyFile(path string, opts VerifyFileOptions) error {
 		maxEntrySize:       opts.MaxEntrySize,
 		maxKeySize:         opts.MaxKeySize,
 		maxStreamPELSize:   opts.MaxStreamPELSize,
+		maxLibrarySize:     opts.MaxLibrarySize,
 		allowPartialVerify: opts.AllowPartialVerify,
 		requireStrictEOF:   opts.RequireStrictEOF,
 	}
@@ -77,6 +84,7 @@ type VerifyReaderOptions struct {
 	MaxEntrySize       int
 	MaxKeySize         int
 	MaxStreamPELSize   int
+	MaxLibrarySize     int
 	AllowPartialVerify bool
 	RequireStrictEOF   bool
 }
@@ -97,6 +105,10 @@ func (o *VerifyReaderOptions) maybeSetDefaults() {
 	if o.MaxStreamPELSize <= 0 {
 		o.MaxStreamPELSize = defaultMaxStreamPELSize
 	}
+
+	if o.MaxLibrarySize <= 0 {
+		o.MaxLibrarySize = defaultMaxLibrarySize
+	}
 }
 
 // VerifyReader verifies that the given RDB reader is not corrupt,
@@ -108,6 +120,7 @@ func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
 		maxEntrySize:       opts.MaxEntrySize,
 		maxKeySize:         opts.MaxKeySize,
 		maxStreamPELSize:   opts.MaxStreamPELSize,
+		maxLibrarySize:     opts.MaxLibrarySize,
 		allowPartialVerify: opts.AllowPartialVerify,
 		requireStrictEOF:   opts.RequireStrictEOF,
 	}
@@ -141,8 +154,9 @@ func VerifyValue(payload []byte, opts VerifyValueOptions) error {
 		maxStreamPELSize: opts.MaxStreamPELSize,
 		// We don't care about the values below, as they don't
 		// really apply to RDB values.
-		maxDataSize: math.MaxInt,
-		maxKeySize:  math.MaxInt,
+		maxDataSize:    math.MaxInt,
+		maxKeySize:     math.MaxInt,
+		maxLibrarySize: math.MaxInt,
 	}
 
 	return readValue("", payload, v, uint64(opts.MaxEntrySize))
@@ -168,6 +182,10 @@ func errMaxStreamStrSizeExceeded(current int, limit int) error {
 	return fmt.Errorf("max stream string item size is exceeded. current: %d, limit: %d", current, limit)
 }
 
+func errMaxLibrarySizeExceeded(current int, limit int) error {
+	return fmt.Errorf("max library size is exceeded. current: %d, limit: %d", current, limit)
+}
+
 type verifier struct {
 	maxDataSize        int
 	maxEntrySize       int
@@ -176,6 +194,8 @@ type verifier struct {
 	allowPartialVerify bool
 	requireStrictEOF   bool
 	dataSize           int
+	librarySize        int
+	maxLibrarySize     int
 }
 
 func (v *verifier) HandleString(key string, value string) error {
@@ -473,4 +493,13 @@ func (v *verifier) HandleZsetEnding(key string, entriesRead uint64) {
 }
 
 func (v *verifier) HandleStreamEnding(key string, entriesRead uint64) {
+}
+
+func (v *verifier) HandleLibrary(code string) error {
+	v.librarySize += len(code)
+	if v.librarySize > v.maxLibrarySize {
+		return errMaxLibrarySizeExceeded(v.librarySize, v.maxLibrarySize)
+	}
+
+	return nil
 }

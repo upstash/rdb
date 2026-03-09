@@ -1,11 +1,12 @@
 package rdb
 
 import (
-	"github.com/stretchr/testify/require"
 	"math"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const version = "7.2.4"
@@ -359,4 +360,38 @@ func TestEncoder_JSON(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, db.modules[jsonKey], jsonValue)
+}
+
+func TestEncoder_Functions(t *testing.T) {
+	tempDir := t.TempDir()
+	rdbFile := filepath.Join(tempDir, "functions.rdb")
+
+	encoder, err := NewFileEncoder(rdbFile, version)
+	require.NoError(t, err)
+
+	require.NoError(t, encoder.Begin())
+
+	libraryCode := `
+		#!lua name=mylib
+	
+		local function my_hset(keys, args)
+		  local hash = keys[1]
+		  local time = redis.call('TIME')[1]
+		  return redis.call('HSET', hash, '_last_modified_', time, unpack(args))
+		end
+		
+		redis.register_function('my_hset', my_hset)
+	`
+
+	err = encoder.WriteLibrary(libraryCode)
+	require.NoError(t, err)
+
+	require.NoError(t, encoder.Close())
+
+	db := newDummyDB()
+	err = ReadFile(filepath.Join(rdbFile), db)
+	require.NoError(t, err)
+
+	require.Len(t, db.libraries, 1)
+	require.Equal(t, db.libraries[0], libraryCode)
 }

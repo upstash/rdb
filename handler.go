@@ -47,6 +47,9 @@ type ValueHandler interface {
 
 	// returned function is called for the each read hash enty with expiration info  for the key.
 	HashWithExpEntryHandler(key string) func(field string, value string, ttl time.Time) error
+
+	// called when the a function code is read
+	HandleLibrary(code string) error
 }
 
 // FileHandler is an extension of ValueHandler, which can handle RDB objects
@@ -54,6 +57,7 @@ type ValueHandler interface {
 type FileHandler interface {
 	ValueHandler
 	HandleExpireTime(key string, expireTime time.Duration)
+	HandleLibrary(code string) error
 }
 
 // nopHandler is used to ignore the RDB objects read so that
@@ -127,5 +131,9 @@ func (nopHandler) HandleExpireTime(key string, expireTime time.Duration) {
 }
 
 func (h nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, ttl time.Time) error {
+	return nil
+}
+
+func (nopHandler) HandleLibrary(code string) error {
 	return nil
 }

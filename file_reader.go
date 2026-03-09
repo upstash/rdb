@@ -217,11 +217,11 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 		case typeOpCodeFunctionPreGA:
 			return errors.New("pre-release function format not supported")
 		case typeOpCodeFunction2:
-			if !handler.AllowPartialRead() {
-				return errors.New("restoring function payload is not supported when the partial restore is not allowed")
+			payload, err := reader.ReadString() // function payload
+			if err != nil {
+				return err
 			}
-
-			_, err = reader.ReadString() // function payload
+			err = handler.HandleLibrary(payload)
 			if err != nil {
 				return err
 			}
