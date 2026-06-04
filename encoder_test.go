@@ -72,10 +72,33 @@ func TestEncoder_String(t *testing.T) {
 	for _, tc := range tests {
 		require.Equal(t, db.strings[tc.key], tc.value)
 		if !tc.expiry.IsZero() {
-			require.WithinDuration(t, time.Now().Add(db.expireTimes[tc.key]), tc.expiry, time.Second*30)
+			require.WithinDuration(t, db.expireTimes[tc.key], tc.expiry, time.Second)
 		}
 	}
 
+}
+
+func TestEncoder_StringExpiryTime(t *testing.T) {
+	rdbFile := filepath.Join(t.TempDir(), "string-expiry.rdb")
+
+	encoder, err := NewFileEncoder(rdbFile, version)
+	require.NoError(t, err)
+	require.NoError(t, encoder.Begin())
+
+	key := "with-expiry"
+	value := "expires later"
+	expiry := time.Date(2030, time.April, 13, 9, 37, 49, int(time.Millisecond), time.UTC)
+	err = encoder.WriteStringEntry(key, value, expiry)
+	require.NoError(t, err)
+	require.NoError(t, encoder.Close())
+
+	db := newDummyDB()
+	err = ReadFile(rdbFile, db)
+	require.NoError(t, err)
+
+	require.Equal(t, value, db.strings[key])
+	expireTime := db.expireTimes[key]
+	require.True(t, expiry.Equal(expireTime), "Expected expiry time to be %s, got %s", expiry, expireTime)
 }
 
 func TestEncoder_List(t *testing.T) {

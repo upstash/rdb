@@ -107,7 +107,7 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 	handler0 := handler
 
 	var hasExpireTime bool
-	var expireTime time.Duration
+	var expireTime time.Time
 	for {
 		t, err := reader.ReadType()
 		if err != nil {
@@ -161,7 +161,7 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 				return err
 			}
 			hasExpireTime = true
-			expireTime = time.Duration(t) * time.Second
+			expireTime = time.Unix(int64(t), 0)
 		case typeOpCodeExpireTimeMS:
 			t, err := reader.readUint64()
 			if err != nil {
@@ -169,7 +169,7 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 			}
 
 			hasExpireTime = true
-			expireTime = time.Duration(t) * time.Millisecond
+			expireTime = time.UnixMilli(int64(t))
 		case typeOpCodeResizeDB:
 			_, _, err = reader.readLen() // db size
 			if err != nil {
@@ -240,7 +240,7 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 	}
 }
 
-func readObject(reader *valueReader, handler FileHandler, t Type, hasExpireTime bool, expireTime time.Duration) error {
+func readObject(reader *valueReader, handler FileHandler, t Type, hasExpireTime bool, expireTime time.Time) error {
 	key, err := reader.ReadString()
 	if err != nil {
 		return err

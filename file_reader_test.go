@@ -19,7 +19,7 @@ type dummyDB struct {
 	modules           map[string]string
 	streamEntries     map[string][]StreamEntry
 	streamGroups      map[string][]StreamConsumerGroup
-	expireTimes       map[string]time.Duration
+	expireTimes       map[string]time.Time
 	hashExpireTimes   map[string]map[string]time.Time
 	listEntriesRead   map[string]uint64
 	zsetEntriesRead   map[string]uint64
@@ -38,7 +38,7 @@ func newDummyDB() *dummyDB {
 		modules:           make(map[string]string),
 		streamEntries:     make(map[string][]StreamEntry),
 		streamGroups:      make(map[string][]StreamConsumerGroup),
-		expireTimes:       make(map[string]time.Duration),
+		expireTimes:       make(map[string]time.Time),
 		listEntriesRead:   make(map[string]uint64),
 		zsetEntriesRead:   make(map[string]uint64),
 		streamEntriesRead: make(map[string]uint64),
@@ -159,7 +159,7 @@ func (db *dummyDB) HandleStreamEnding(key string, entriesRead uint64) {
 	db.streamEntriesRead[key] = entriesRead
 }
 
-func (db *dummyDB) HandleExpireTime(key string, expireTime time.Duration) {
+func (db *dummyDB) HandleExpireTime(key string, expireTime time.Time) {
 	db.expireTimes[key] = expireTime
 }
 
@@ -257,7 +257,7 @@ func TestFileReader_withIdleInfo(t *testing.T) {
 
 	expected := newDummyDB()
 	expected.strings["up"] = "stash"
-	expected.expireTimes["up"] = time.Duration(1694542150330000000)
+	expected.expireTimes["up"] = time.Unix(0, 1694542150330000000)
 
 	require.Equal(t, expected, db)
 }
@@ -269,7 +269,7 @@ func TestFileReader_withFreqInfo(t *testing.T) {
 
 	expected := newDummyDB()
 	expected.strings["up"] = "stash"
-	expected.expireTimes["up"] = time.Duration(1694542238686000000)
+	expected.expireTimes["up"] = time.Unix(0, 1694542238686000000)
 
 	require.Equal(t, expected, db)
 }
@@ -289,7 +289,7 @@ func TestFileReader_expireTimeSec(t *testing.T) {
 
 	expected := newDummyDB()
 	expected.strings["up"] = "stash"
-	expected.expireTimes["up"] = time.Duration(2325035706000000000)
+	expected.expireTimes["up"] = time.Unix(0, 2325035706000000000)
 
 	require.Equal(t, expected, db)
 }
