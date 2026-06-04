@@ -45,8 +45,8 @@ type ValueHandler interface {
 	// with the name and the number of entries read.
 	HandleStreamEnding(key string, entriesRead uint64)
 
-	// returned function is called for the each read hash enty with expiration info  for the key.
-	HashWithExpEntryHandler(key string) func(field string, value string, ttl time.Time) error
+	// returned function is called for each read hash entry with expiration info for the key.
+	HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error
 
 	// called when the a function code is read
 	HandleLibrary(code string) error
@@ -56,7 +56,8 @@ type ValueHandler interface {
 // and their expiration information from RDB files.
 type FileHandler interface {
 	ValueHandler
-	HandleExpireTime(key string, expireTime time.Duration)
+	// called when a key expiration timestamp is read.
+	HandleExpireTime(key string, expireTime time.Time)
 	HandleLibrary(code string) error
 }
 
@@ -127,10 +128,10 @@ func (nopHandler) StreamGroupHandler(key string) func(group StreamConsumerGroup)
 func (nopHandler) HandleStreamEnding(key string, entriesRead uint64) {
 }
 
-func (nopHandler) HandleExpireTime(key string, expireTime time.Duration) {
+func (nopHandler) HandleExpireTime(key string, expireTime time.Time) {
 }
 
-func (h nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, ttl time.Time) error {
+func (h nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
 	return nil
 }
 

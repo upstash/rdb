@@ -317,7 +317,7 @@ func (s *FileEncoder) writeExpiry(expiry time.Time) error {
 	if err := s.writer.WriteByte(byte(typeOpCodeExpireTimeMS)); err != nil {
 		return err
 	}
-	msTimestamp := uint64(time.Until(expiry).Milliseconds())
+	msTimestamp := uint64(expiry.UnixMilli())
 	if err := s.writer.WriteUint64(msTimestamp); err != nil {
 		return err
 	}

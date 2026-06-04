@@ -483,7 +483,7 @@ func (v *verifier) RequireStrictEOF() bool {
 	return v.requireStrictEOF
 }
 
-func (v *verifier) HandleExpireTime(key string, expireTime time.Duration) {
+func (v *verifier) HandleExpireTime(key string, expireTime time.Time) {
 }
 
 func (v *verifier) HandleListEnding(key string, entriesRead uint64) {
