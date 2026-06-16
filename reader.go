@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"time"
@@ -1831,4 +1832,32 @@ func (r *valueReader) read(n int) ([]byte, error) {
 func (r *valueReader) skip(n int) error {
 	_, err := r.buf.Get(n)
 	return err
+}
+
+func ReadFunctions(payload []byte, fn func(code string) error) error {
+	reader := valueReader{buf: newMemoryBackedBuffer(payload)}
+	for {
+		t, err := reader.ReadType()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		switch t {
+		case typeOpCodeFunction2:
+			code, err := reader.ReadString()
+			if err != nil {
+				return err
+			}
+			if err := fn(code); err != nil {
+				return err
+			}
+		case typeOpCodeFunctionPreGA:
+			return errors.New("pre-release function format is not supported")
+		default:
+			return fmt.Errorf("unexpected opcode %d in function payload", t)
+		}
+	}
 }

@@ -205,6 +205,13 @@ func (w *Writer) WriteStream(stream *Stream) error {
 	return writer.WriteConsumerGroups(stream.Groups)
 }
 
+func (w *Writer) WriteLibrary(code string) error {
+	if err := w.WriteType(typeOpCodeFunction2); err != nil {
+		return err
+	}
+	return w.WriteString(code)
+}
+
 // WriteType writes the given object type.
 func (w *Writer) WriteType(objType Type) error {
 	return w.writeUint8(uint8(objType))

@@ -2,7 +2,6 @@ package rdb
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"math"
 	"os"
 	"path/filepath"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/ohler55/ojg/oj"
 	"github.com/stretchr/testify/require"
@@ -1379,4 +1380,54 @@ func TestReadHashWithExpirationListpack(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, entry.value, "myvalue")
 	assert.WithinDuration(t, entry.exp, time.Unix(2216202057, 0), time.Second)
+}
+
+func TestReadFunctions_roundTrip(t *testing.T) {
+	path := filepath.Join(valueDumpsPath, "function.bin")
+
+	dump, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	err = VerifyValueChecksum(dump)
+	require.NoError(t, err)
+
+	dump = dump[:len(dump)-10]
+
+	r := valueReader{
+		buf: newMemoryBackedBuffer(dump),
+	}
+
+	ot, err := r.ReadType()
+	require.NoError(t, err)
+	require.Equal(t, typeOpCodeFunction2, ot)
+
+	value, err := r.ReadString()
+	require.NoError(t, err)
+	assert.Equal(t, "#!lua name=mylib \n redis.register_function('myfunc', function(keys, args) return args[1] end)", value)
+}
+
+func TestReadFunctions_multipleLibraries(t *testing.T) {
+	codes := []string{
+		"#!lua name=liba\nredis.register_function('fa', function() end)",
+		"#!lua name=libb\nredis.register_function('fb', function() end)",
+		"#!lua name=libc\nredis.register_function('fc', function() end)",
+	}
+
+	writer := NewWriter()
+	for _, code := range codes {
+		require.NoError(t, writer.WriteLibrary(code))
+	}
+	require.NoError(t, writer.WriteChecksum(Version))
+
+	payload := writer.GetBuffer()
+	require.NoError(t, VerifyValueChecksum(payload))
+	payload = payload[:len(payload)-ValueChecksumSize]
+
+	var got []string
+	err := ReadFunctions(payload, func(code string) error {
+		got = append(got, code)
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, codes, got)
 }

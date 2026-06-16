@@ -217,6 +217,39 @@ func TestJSON(t *testing.T) {
 	require.Equal(t, dump, writer.GetBuffer())
 }
 
+func TestWriteFunction(t *testing.T) {
+	path := filepath.Join(valueDumpsPath, "function.bin")
+
+	dump, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var code string
+	err = ReadFunctions(dump[:len(dump)-ValueChecksumSize], func(c string) error {
+		code = c
+		return nil
+	})
+	require.NoError(t, err)
+
+	writer := NewWriter()
+
+	err = writer.WriteLibrary(code)
+	require.NoError(t, err)
+
+	err = writer.WriteChecksum(Version)
+	require.NoError(t, err)
+
+	payload := writer.GetBuffer()
+	require.NoError(t, VerifyValueChecksum(payload))
+
+	var got string
+	err = ReadFunctions(payload[:len(payload)-ValueChecksumSize], func(c string) error {
+		got = c
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, code, got)
+}
+
 func TestStream(t *testing.T) {
 	path := filepath.Join(valueDumpsPath, "stream-listpacks-upstash.bin")
 
