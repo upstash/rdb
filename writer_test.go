@@ -54,7 +54,7 @@ func TestWriteString(t *testing.T) {
 			err = writer.WriteChecksum(Version)
 			require.NoError(t, err)
 
-			require.Equal(t, dump, writer.GetBuffer())
+			requireSameValue(t, dump, writer.GetBuffer())
 		})
 	}
 }
@@ -88,7 +88,7 @@ func TestWriteList(t *testing.T) {
 	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
-	require.Equal(t, dump, writer.GetBuffer())
+	requireSameValue(t, dump, writer.GetBuffer())
 }
 
 func TestWriteSet(t *testing.T) {
@@ -120,7 +120,7 @@ func TestWriteSet(t *testing.T) {
 	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
-	require.Equal(t, dump, writer.GetBuffer())
+	requireSameValue(t, dump, writer.GetBuffer())
 }
 
 func TestWriteZset(t *testing.T) {
@@ -154,7 +154,7 @@ func TestWriteZset(t *testing.T) {
 	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
-	require.Equal(t, dump, writer.GetBuffer())
+	requireSameValue(t, dump, writer.GetBuffer())
 }
 
 func TestWriteHash(t *testing.T) {
@@ -186,7 +186,7 @@ func TestWriteHash(t *testing.T) {
 	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
-	require.Equal(t, dump, writer.GetBuffer())
+	requireSameValue(t, dump, writer.GetBuffer())
 }
 
 func TestJSON(t *testing.T) {
@@ -214,7 +214,7 @@ func TestJSON(t *testing.T) {
 	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
-	require.Equal(t, dump, writer.GetBuffer())
+	requireSameValue(t, dump, writer.GetBuffer())
 }
 
 func TestWriteFunction(t *testing.T) {
@@ -292,5 +292,18 @@ func TestStream(t *testing.T) {
 	err = writer.WriteChecksum(Version)
 	require.NoError(t, err)
 
-	require.Equal(t, dump, writer.GetBuffer())
+	requireSameValue(t, dump, writer.GetBuffer())
+}
+
+// requireSameValue asserts that the payload the writer produced holds the same
+// object with the given dump.
+//
+// Only the objects are compared, as the checksum block carries the RDB version
+// we write, which is not necessarily the version the dump was taken with. The
+// checksum block of the payload is verified on its own instead.
+func requireSameValue(t *testing.T, dump []byte, payload []byte) {
+	t.Helper()
+
+	require.NoError(t, VerifyValueChecksum(payload))
+	require.Equal(t, dump[:len(dump)-ValueChecksumSize], payload[:len(payload)-ValueChecksumSize])
 }

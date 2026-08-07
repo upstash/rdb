@@ -155,6 +155,13 @@ func (r *valueReader) readObject(key string, t Type, handler ValueHandler) error
 	case TypeHashListpackEx:
 		h := handler.HashWithExpEntryHandler(key)
 		err = r.ReadHashListpackEx(h)
+	case TypeArray:
+		h := handler.ArrayEntryHandler(key)
+		var insertIndex uint64
+		read, insertIndex, err = r.ReadArray(h)
+		if err == nil {
+			handler.HandleArrayEnding(key, read, insertIndex)
+		}
 	default:
 		err = fmt.Errorf("unknown RDB object type %d", t)
 	}
@@ -1448,6 +1455,140 @@ func (r *valueReader) ReadHashListpackEx(cb func(string, string, time.Time) erro
 	}
 
 	return nil
+}
+
+// ReadArray reads the next array object and returns the number of elements
+// read, along with the insert cursor of the array.
+// For each array element read, the cb is called with the index of that element
+// and its value.
+// The array has the following form:
+// <len><has-cursor>[<cursor>]<index><tag><value>...<index><tag><value>
+// where
+// <len> is a length encoded integer, and there are exactly <len>
+// <index><tag><value> triplets. Arrays are never empty, so it is at least 1.
+// <has-cursor> is a length encoded integer, which is 1 when the array has an
+// insert cursor, and 0 otherwise. When it is 1, it is followed by the <cursor>,
+// which is a length encoded integer. The cursor cannot be stored
+// unconditionally, as the length encoding cannot represent the value Redis
+// uses to mark the missing cursors.
+// <index> is a length encoded integer, which is the index of the element.
+// <tag> is a length encoded integer, which describes how the <value> is stored:
+//   - 0: a string
+//   - 1: an 8 byte little endian signed integer
+//   - 2: an 8 byte long number, encoded as the IEEE 754 binary representation
+//     of a float64
+//   - 3: a string of at most 7 bytes
+//
+// All array elements are logically strings. The integer and float tags are
+// only used to store the elements more compactly, and they are read back as
+// their string representations.
+func (r *valueReader) ReadArray(cb func(uint64, string) error) (uint64, uint64, error) {
+	length, _, err := r.readLen()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if length == 0 {
+		return 0, 0, errEmptyArray
+	}
+
+	insertIndex, err := r.readArrayInsertIndex()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	for i := uint64(0); i < length; i++ {
+		index, encoded, err := r.readLen()
+		if err != nil {
+			return 0, 0, err
+		}
+
+		if encoded || index > arrayMaxIndex {
+			return 0, 0, fmt.Errorf("invalid array index %d", index)
+		}
+
+		value, err := r.readArrayValue()
+		if err != nil {
+			return 0, 0, err
+		}
+
+		err = cb(index, value)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	return length, insertIndex, nil
+}
+
+// readArrayInsertIndex reads the insert cursor of an array, and returns
+// ArrayInsertIndexNone when the array has none.
+func (r *valueReader) readArrayInsertIndex() (uint64, error) {
+	hasInsertIndex, _, err := r.readLen()
+	if err != nil {
+		return 0, err
+	}
+
+	switch hasInsertIndex {
+	case 0:
+		return ArrayInsertIndexNone, nil
+	case 1:
+		insertIndex, encoded, err := r.readLen()
+		if err != nil {
+			return 0, err
+		}
+
+		// Redis cannot store a cursor it reads back as the length encoding
+		// error, which is the value we use to mark the missing cursors.
+		if encoded || insertIndex > arrayMaxIndex {
+			return 0, fmt.Errorf("invalid array insert cursor %d", insertIndex)
+		}
+
+		return insertIndex, nil
+	default:
+		return 0, fmt.Errorf("unexpected array insert cursor marker %d", hasInsertIndex)
+	}
+}
+
+// readArrayValue reads a single array element value, and returns its string
+// representation, no matter how it is stored.
+func (r *valueReader) readArrayValue() (string, error) {
+	tag, _, err := r.readLen()
+	if err != nil {
+		return "", err
+	}
+
+	switch tag {
+	case arrayTagStr:
+		return r.ReadString()
+	case arrayTagInt:
+		value, err := r.readUint64()
+		if err != nil {
+			return "", err
+		}
+
+		return strconv.FormatInt(int64(value), 10), nil
+	case arrayTagFloat:
+		bits, err := r.readUint64()
+		if err != nil {
+			return "", err
+		}
+
+		return formatArrayFloat(math.Float64frombits(bits)), nil
+	case arrayTagSmallStr:
+		value, err := r.ReadString()
+		if err != nil {
+			return "", err
+		}
+
+		if len(value) > arraySmallStrMaxLen {
+			return "", fmt.Errorf("too long small string of length %d in array", len(value))
+		}
+
+		return value, nil
+	default:
+		return "", fmt.Errorf("unknown array element type %d", tag)
+	}
 }
 
 // Listpack is a string that represents the list entries.

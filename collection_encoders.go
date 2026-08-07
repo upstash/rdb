@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"fmt"
 	"math"
 	"time"
 )
@@ -15,6 +16,8 @@ type CollectionEncoder interface {
 	WriteFieldStr(field string) error
 
 	WriteFieldStrFloat64(field string, value float64) error
+
+	WriteFieldUint64Str(index uint64, value string) error
 
 	Close() error
 }
@@ -67,6 +70,10 @@ func (s *baseCollectionEncoder) WriteFieldStrFloat64(field string, value float64
 }
 
 func (s *baseCollectionEncoder) WriteFieldStrStrWithExpiry(key string, value string, expiry time.Time) error {
+	panic("implement me")
+}
+
+func (s *baseCollectionEncoder) WriteFieldUint64Str(index uint64, value string) error {
 	panic("implement me")
 }
 
@@ -164,6 +171,90 @@ func (s *HashEncoder) WriteFieldStrStr(key string, value string) error {
 	if err != nil {
 		return err
 	}
+	s.length++
+	return nil
+}
+
+type ArrayEncoder struct {
+	baseCollectionEncoder
+}
+
+// NewArrayEncoder creates an encoder for an array whose insert cursor is
+// insertIndex, which is the index the last ARINSERT wrote to. The next
+// insertion goes to insertIndex + 1. It must be set to ArrayInsertIndexNone
+// for the arrays that have no cursor.
+//
+// Redis rejects the empty arrays, so at least one element must be written
+// before the returned encoder is closed.
+func NewArrayEncoder(e *FileEncoder, insertIndex uint64) (*ArrayEncoder, error) {
+	encoder := &ArrayEncoder{}
+	encoder.encoder = e
+	err := encoder.WriteZeroLength()
+	if err != nil {
+		return nil, err
+	}
+	// The cursor is stored right after the length, and its size depends on
+	// whether the array has one, so unlike the length, it cannot be written
+	// back on Close.
+	err = encoder.writeInsertIndex(insertIndex)
+	if err != nil {
+		return nil, err
+	}
+	return encoder, nil
+}
+
+// Close writes the final length of the array back, and fails for the empty
+// arrays, which Redis rejects while reading them.
+func (s *ArrayEncoder) Close() error {
+	if s.length == 0 {
+		return errEmptyArray
+	}
+
+	return s.baseCollectionEncoder.Close()
+}
+
+func (s *ArrayEncoder) writeInsertIndex(insertIndex uint64) error {
+	// The cursor cannot be stored unconditionally, as the length encoding
+	// cannot represent the value used to mark the missing cursors.
+	if insertIndex == ArrayInsertIndexNone {
+		return s.encoder.writer.WriteLength(0)
+	}
+
+	if err := s.encoder.writer.WriteLength(1); err != nil {
+		return err
+	}
+
+	return s.encoder.writer.WriteLength(insertIndex)
+}
+
+func (s *ArrayEncoder) WriteFieldUint64Str(index uint64, value string) error {
+	if index > arrayMaxIndex {
+		return fmt.Errorf("invalid array index %d", index)
+	}
+
+	if err := s.encoder.writer.WriteLength(index); err != nil {
+		return err
+	}
+
+	tag, ival, fval := encodeArrayValue(value)
+	if err := s.encoder.writer.WriteLength(tag); err != nil {
+		return err
+	}
+
+	var err error
+	switch tag {
+	case arrayTagInt:
+		err = s.encoder.writer.WriteUint64(uint64(ival))
+	case arrayTagFloat:
+		err = s.encoder.writer.WriteUint64(math.Float64bits(fval))
+	default:
+		err = s.encoder.writeString(value)
+	}
+
+	if err != nil {
+		return err
+	}
+
 	s.length++
 	return nil
 }

@@ -3,6 +3,7 @@ package rdb
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 )
@@ -177,6 +178,84 @@ func (w *Writer) WriteHashWithMetadata(hash map[string]HashEntry) error {
 		}
 	}
 	return nil
+}
+
+// WriteArray writes the given elements as the TypeArray. The elements are
+// described by the parallel indexes and values slices, and there must be at
+// least one of them, as Redis rejects the empty arrays.
+//
+// insertIndex is the insert cursor of the array, which is the index the last
+// ARINSERT wrote to. The next insertion goes to insertIndex + 1. It must be
+// set to ArrayInsertIndexNone for the arrays that have no cursor.
+func (w *Writer) WriteArray(indexes []uint64, values []string, insertIndex uint64) error {
+	n := len(indexes)
+	if n != len(values) {
+		return errors.New("indexes and values must be of the same length")
+	}
+
+	if n == 0 {
+		return errEmptyArray
+	}
+
+	err := w.writeLen(uint64(n))
+	if err != nil {
+		return err
+	}
+
+	err = w.writeArrayInsertIndex(insertIndex)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < n; i++ {
+		err = w.writeArrayElement(indexes[i], values[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (w *Writer) writeArrayInsertIndex(insertIndex uint64) error {
+	// The cursor cannot be stored unconditionally, as the length encoding
+	// cannot represent the value used to mark the missing cursors.
+	if insertIndex == ArrayInsertIndexNone {
+		return w.writeLen(0)
+	}
+
+	err := w.writeLen(1)
+	if err != nil {
+		return err
+	}
+
+	return w.writeLen(insertIndex)
+}
+
+func (w *Writer) writeArrayElement(index uint64, value string) error {
+	if index > arrayMaxIndex {
+		return fmt.Errorf("invalid array index %d", index)
+	}
+
+	err := w.writeLen(index)
+	if err != nil {
+		return err
+	}
+
+	tag, ival, fval := encodeArrayValue(value)
+	err = w.writeLen(tag)
+	if err != nil {
+		return err
+	}
+
+	switch tag {
+	case arrayTagInt:
+		return w.writeUint64(uint64(ival))
+	case arrayTagFloat:
+		return w.writeUint64(math.Float64bits(fval))
+	default:
+		return w.WriteString(value)
+	}
 }
 
 // WriteJSON writes the JSON string as the ObjectTypeModule2, with the

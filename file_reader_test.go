@@ -25,6 +25,10 @@ type dummyDB struct {
 	zsetEntriesRead   map[string]uint64
 	streamEntriesRead map[string]uint64
 	libraries         []string
+
+	arrays             map[string]map[uint64]string
+	arrayEntriesRead   map[string]uint64
+	arrayInsertIndexes map[string]uint64
 }
 
 func newDummyDB() *dummyDB {
@@ -44,6 +48,10 @@ func newDummyDB() *dummyDB {
 		streamEntriesRead: make(map[string]uint64),
 		hashExpireTimes:   make(map[string]map[string]time.Time),
 		libraries:         make([]string, 0),
+
+		arrays:             make(map[string]map[uint64]string),
+		arrayEntriesRead:   make(map[string]uint64),
+		arrayInsertIndexes: make(map[string]uint64),
 	}
 }
 
@@ -184,6 +192,24 @@ func (db *dummyDB) HashWithExpEntryHandler(key string) func(field string, value 
 		}
 		return nil
 	}
+}
+
+func (db *dummyDB) ArrayEntryHandler(key string) func(index uint64, value string) error {
+	return func(index uint64, value string) error {
+		array, ok := db.arrays[key]
+		if !ok {
+			array = make(map[uint64]string)
+		}
+
+		array[index] = value
+		db.arrays[key] = array
+		return nil
+	}
+}
+
+func (db *dummyDB) HandleArrayEnding(key string, entriesRead uint64, insertIndex uint64) {
+	db.arrayEntriesRead[key] = entriesRead
+	db.arrayInsertIndexes[key] = insertIndex
 }
 
 func (db *dummyDB) HandleLibrary(code string) error {

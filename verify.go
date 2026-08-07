@@ -370,6 +370,37 @@ func (v *verifier) ZsetEntryHandler(key string) func(elem string, score float64)
 	}
 }
 
+func (v *verifier) ArrayEntryHandler(key string) func(index uint64, value string) error {
+	if len(key) > v.maxKeySize {
+		return func(index uint64, value string) error {
+			return errMaxKeySizeExceeded(len(key), v.maxKeySize)
+		}
+	}
+
+	v.dataSize += len(key)
+	if v.dataSize > v.maxDataSize {
+		return func(index uint64, value string) error {
+			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
+		}
+	}
+
+	var entrySize int
+	return func(index uint64, value string) error {
+		elementSize := len(value) + 8 // 8: index
+		entrySize += elementSize
+		if entrySize > v.maxEntrySize {
+			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
+		}
+
+		v.dataSize += elementSize
+		if v.dataSize > v.maxDataSize {
+			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
+		}
+
+		return nil
+	}
+}
+
 func (v *verifier) HandleModule(key string, value string, marker ModuleMarker) error {
 	if len(key) > v.maxKeySize {
 		return errMaxKeySizeExceeded(len(key), v.maxKeySize)
@@ -493,6 +524,9 @@ func (v *verifier) HandleZsetEnding(key string, entriesRead uint64) {
 }
 
 func (v *verifier) HandleStreamEnding(key string, entriesRead uint64) {
+}
+
+func (v *verifier) HandleArrayEnding(key string, entriesRead uint64, insertIndex uint64) {
 }
 
 func (v *verifier) HandleLibrary(code string) error {
