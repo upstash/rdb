@@ -85,7 +85,7 @@ func main() {
 ### Verifying a file
 
 The following code demonstrates how to verify an RDB file is not corrupt, and
-does not exceed the defined limits of the total data, max entry, and max key sizes.
+does not exceed the defined limits of the total data, max entry, max value, and max key sizes.
 
 ```go
 import (
@@ -98,6 +98,7 @@ func main() {
 	opts := rdb.VerifyFileOptions{
 		MaxDataSize:  256 << 20, // 256 MB
 		MaxEntrySize: 100 << 20, // 100 MB
+		MaxValueSize: 100 << 20, // 100 MB
 		MaxStreamPELSize: 1000,
 	}
 	err := rdb.VerifyFile("/path/to/dump.rdb", opts)
@@ -110,7 +111,7 @@ func main() {
 ### Verifying a reader
 
 The following code demonstrates how to verify an io.Reader to reads an RDB file is not corrupt, and
-does not exceed the defined limits of the total data, max entry, and max key sizes.
+does not exceed the defined limits of the total data, max entry, max value, and max key sizes.
 
 ```go
 import (
@@ -124,6 +125,7 @@ func main() {
 	opts := rdb.VerifyReaderOptions{
 		MaxDataSize:  256 << 20, // 256 MB
 		MaxEntrySize: 100 << 20, // 100 MB
+		MaxValueSize: 100 << 20, // 100 MB
 		MaxStreamPELSize: 1000,
 	}
 	
@@ -140,7 +142,7 @@ func main() {
 ### Verifying a value
 
 The following code demonstrates how to verify an RDB value is not corrupt, and
-does not exceed the defined limits of the max entry size.
+does not exceed the defined limits of the max entry and max value sizes.
 
 ```go
 import (
@@ -152,6 +154,7 @@ import (
 func main() {
 	opts := rdb.VerifyValueOptions{
 		MaxEntrySize: 100 << 20, // 100 MB
+		MaxValueSize: 100 << 20, // 100 MB
 		MaxStreamPELSize: 1000,
 	}
 	payload := []byte{ /*RDB value payload*/ }

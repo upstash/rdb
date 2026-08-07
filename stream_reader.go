@@ -362,7 +362,9 @@ func (r *valueReader) readStreamEntries(cb func(StreamEntry) error) error {
 						ID:    id,
 						Value: fields,
 					}
-					cb(entry)
+					if err := cb(entry); err != nil {
+						return err
+					}
 				}
 			} else {
 				numFieldsS, err := lpReader.readListpackEntry()
@@ -393,7 +395,9 @@ func (r *valueReader) readStreamEntries(cb func(StreamEntry) error) error {
 						ID:    id,
 						Value: fields,
 					}
-					cb(entry)
+					if err := cb(entry); err != nil {
+						return err
+					}
 				}
 			}
 

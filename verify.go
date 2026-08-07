@@ -10,6 +10,7 @@ import (
 
 var defaultMaxDataSize = 256 << 20  // 256 MB
 var defaultMaxEntrySize = 100 << 20 // 100 MB
+var defaultMaxValueSize = 100 << 20 // 100 MB
 var defaultMaxKeySize = 32 << 10    // 32 KB
 var defaultMaxStreamPELSize = 1000
 var defaultMaxLibrarySize = 100 << 20 // 100 MB
@@ -19,6 +20,7 @@ const maxStreamStrSize = math.MaxUint32
 type VerifyFileOptions struct {
 	MaxDataSize        int
 	MaxEntrySize       int
+	MaxValueSize       int
 	MaxKeySize         int
 	MaxStreamPELSize   int
 	MaxLibrarySize     int
@@ -33,6 +35,10 @@ func (o *VerifyFileOptions) maybeSetDefaults() {
 
 	if o.MaxEntrySize <= 0 {
 		o.MaxEntrySize = defaultMaxEntrySize
+	}
+
+	if o.MaxValueSize <= 0 {
+		o.MaxValueSize = defaultMaxValueSize
 	}
 
 	if o.MaxKeySize <= 0 {
@@ -55,6 +61,7 @@ func VerifyFile(path string, opts VerifyFileOptions) error {
 	v := &verifier{
 		maxDataSize:        opts.MaxDataSize,
 		maxEntrySize:       opts.MaxEntrySize,
+		maxValueSize:       opts.MaxValueSize,
 		maxKeySize:         opts.MaxKeySize,
 		maxStreamPELSize:   opts.MaxStreamPELSize,
 		maxLibrarySize:     opts.MaxLibrarySize,
@@ -82,6 +89,7 @@ func VerifyFile(path string, opts VerifyFileOptions) error {
 type VerifyReaderOptions struct {
 	MaxDataSize        int
 	MaxEntrySize       int
+	MaxValueSize       int
 	MaxKeySize         int
 	MaxStreamPELSize   int
 	MaxLibrarySize     int
@@ -96,6 +104,10 @@ func (o *VerifyReaderOptions) maybeSetDefaults() {
 
 	if o.MaxEntrySize <= 0 {
 		o.MaxEntrySize = defaultMaxEntrySize
+	}
+
+	if o.MaxValueSize <= 0 {
+		o.MaxValueSize = defaultMaxValueSize
 	}
 
 	if o.MaxKeySize <= 0 {
@@ -118,6 +130,7 @@ func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
 	v := &verifier{
 		maxDataSize:        opts.MaxDataSize,
 		maxEntrySize:       opts.MaxEntrySize,
+		maxValueSize:       opts.MaxValueSize,
 		maxKeySize:         opts.MaxKeySize,
 		maxStreamPELSize:   opts.MaxStreamPELSize,
 		maxLibrarySize:     opts.MaxLibrarySize,
@@ -132,12 +145,17 @@ func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
 
 type VerifyValueOptions struct {
 	MaxEntrySize     int
+	MaxValueSize     int
 	MaxStreamPELSize int
 }
 
 func (o *VerifyValueOptions) maybeSetDefaults() {
 	if o.MaxEntrySize <= 0 {
 		o.MaxEntrySize = defaultMaxEntrySize
+	}
+
+	if o.MaxValueSize <= 0 {
+		o.MaxValueSize = defaultMaxValueSize
 	}
 
 	if o.MaxStreamPELSize <= 0 {
@@ -151,6 +169,7 @@ func VerifyValue(payload []byte, opts VerifyValueOptions) error {
 	opts.maybeSetDefaults()
 	v := &verifier{
 		maxEntrySize:     opts.MaxEntrySize,
+		maxValueSize:     opts.MaxValueSize,
 		maxStreamPELSize: opts.MaxStreamPELSize,
 		// We don't care about the values below, as they don't
 		// really apply to RDB values.
@@ -168,6 +187,10 @@ func errMaxDataSizeExceeded(current int, limit int) error {
 
 func errMaxEntrySizeExceeded(current int, limit int) error {
 	return fmt.Errorf("max entry size is exceeded. current: %d, limit: %d", current, limit)
+}
+
+func errMaxValueSizeExceeded(current int, limit int) error {
+	return fmt.Errorf("max value size is exceeded. current: %d, limit: %d", current, limit)
 }
 
 func errMaxKeySizeExceeded(current int, limit int) error {
@@ -189,6 +212,7 @@ func errMaxLibrarySizeExceeded(current int, limit int) error {
 type verifier struct {
 	maxDataSize        int
 	maxEntrySize       int
+	maxValueSize       int
 	maxKeySize         int
 	maxStreamPELSize   int
 	allowPartialVerify bool
@@ -201,6 +225,10 @@ type verifier struct {
 func (v *verifier) HandleString(key string, value string) error {
 	if len(key) > v.maxKeySize {
 		return errMaxKeySizeExceeded(len(key), v.maxKeySize)
+	}
+
+	if len(value) > v.maxValueSize {
+		return errMaxValueSizeExceeded(len(value), v.maxValueSize)
 	}
 
 	if len(value) > v.maxEntrySize {
@@ -232,6 +260,10 @@ func (v *verifier) HashEntryHandler(key string) func(field string, value string)
 	var entrySize int
 	return func(field, value string) error {
 		elementSize := len(field) + len(value)
+		if elementSize > v.maxValueSize {
+			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)
+		}
+
 		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
@@ -263,6 +295,10 @@ func (v *verifier) HashWithExpEntryHandler(key string) func(field string, value 
 	var entrySize int
 	return func(field, value string, exp time.Time) error {
 		elementSize := len(field) + len(value) + 8
+		if elementSize > v.maxValueSize {
+			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)
+		}
+
 		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
@@ -294,6 +330,10 @@ func (v *verifier) ListEntryHandler(key string) func(elem string) error {
 	var entrySize int
 	return func(elem string) error {
 		elementSize := len(elem)
+		if elementSize > v.maxValueSize {
+			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)
+		}
+
 		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
@@ -325,6 +365,10 @@ func (v *verifier) SetEntryHandler(key string) func(elem string) error {
 	var entrySize int
 	return func(elem string) error {
 		elementSize := len(elem)
+		if elementSize > v.maxValueSize {
+			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)
+		}
+
 		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
@@ -356,6 +400,10 @@ func (v *verifier) ZsetEntryHandler(key string) func(elem string, score float64)
 	var entrySize int
 	return func(elem string, score float64) error {
 		elementSize := len(elem) + 8
+		if elementSize > v.maxValueSize {
+			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)
+		}
+
 		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
@@ -387,6 +435,10 @@ func (v *verifier) ArrayEntryHandler(key string) func(index uint64, value string
 	var entrySize int
 	return func(index uint64, value string) error {
 		elementSize := len(value) + 8 // 8: index
+		if elementSize > v.maxValueSize {
+			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)
+		}
+
 		entrySize += elementSize
 		if entrySize > v.maxEntrySize {
 			return errMaxEntrySizeExceeded(entrySize, v.maxEntrySize)
@@ -404,6 +456,10 @@ func (v *verifier) ArrayEntryHandler(key string) func(index uint64, value string
 func (v *verifier) HandleModule(key string, value string, marker ModuleMarker) error {
 	if len(key) > v.maxKeySize {
 		return errMaxKeySizeExceeded(len(key), v.maxKeySize)
+	}
+
+	if len(value) > v.maxValueSize {
+		return errMaxValueSizeExceeded(len(value), v.maxValueSize)
 	}
 
 	if len(value) > v.maxEntrySize {
@@ -442,11 +498,17 @@ func (v *verifier) StreamEntryHandler(key string) func(entry StreamEntry) error 
 			valueSize += len(value)
 		}
 
+		entrySize := valueSize + 16 // 8: ID#Seq + 8: ID#Millis
+		if entrySize > v.maxValueSize {
+			return errMaxValueSizeExceeded(entrySize, v.maxValueSize)
+		}
+
 		// we don't check for the max entry size here as we store
 		// stream entries on disk.
+		// the max value size is still checked above,
+		// as it applies to a single stream entry.
 
-		v.dataSize += valueSize
-		v.dataSize += 16 // 8: ID#Seq + 8: ID#Millis
+		v.dataSize += entrySize
 		if v.dataSize > v.maxDataSize {
 			return errMaxDataSizeExceeded(v.dataSize, v.maxDataSize)
 		}
@@ -477,15 +539,21 @@ func (v *verifier) StreamGroupHandler(key string) func(group StreamConsumerGroup
 			}
 
 			for _, pe := range consumer.PendingEntries {
-				groupSize += 32 // 8: ID#Seq + 8: ID#Millis + 8: DeliveryCount + 8: DeliveryTime
+				pendingEntrySize := 32 // 8: ID#Seq + 8: ID#Millis + 8: DeliveryCount + 8: DeliveryTime
 
 				for _, val := range pe.Entry.Value {
 					if len(val) > maxStreamStrSize {
 						return errMaxStreamStrSizeExceeded(len(val), maxStreamStrSize)
 					}
 
-					groupSize += len(val)
+					pendingEntrySize += len(val)
 				}
+
+				if pendingEntrySize > v.maxValueSize {
+					return errMaxValueSizeExceeded(pendingEntrySize, v.maxValueSize)
+				}
+
+				groupSize += pendingEntrySize
 			}
 		}
 		entrySize += groupSize
