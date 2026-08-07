@@ -71,6 +71,13 @@ func TestVerifyFile_maxEntrySize(t *testing.T) {
 	require.ErrorContains(t, err, "max entry size")
 }
 
+func TestVerifyFile_maxValueSize(t *testing.T) {
+	err := VerifyFile(allTypesRDBPath, VerifyFileOptions{
+		MaxValueSize: 5,
+	})
+	require.ErrorContains(t, err, "max value size")
+}
+
 func TestVerifyFile_maxKeySize(t *testing.T) {
 	err := VerifyFile(allTypesRDBPath, VerifyFileOptions{
 		MaxKeySize: 1,
@@ -112,6 +119,46 @@ func TestVerifyValue_maxEntrySize(t *testing.T) {
 		MaxEntrySize: 12,
 	})
 	require.ErrorContains(t, err, "max entry size")
+}
+
+func TestVerifyValue_maxValueSize(t *testing.T) {
+	dump, err := os.ReadFile(stringRDBValuePath)
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxValueSize: 12,
+	})
+	require.ErrorContains(t, err, "max value size")
+}
+
+func TestVerifyValue_maxValueSize_streamEntry(t *testing.T) {
+	// The stream has no pending entries, so the limit must be enforced by the
+	// stream entry callback itself. Its first entry is 47 bytes: 31 bytes of
+	// fields and values plus the 16-byte stream ID.
+	dump, err := os.ReadFile(filepath.Join(valueDumpsPath, "stream-listpacks.bin"))
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxValueSize: 46,
+	})
+	require.ErrorContains(t, err, "max value size")
+}
+
+func TestVerifyValue_maxValueSize_arrayElement(t *testing.T) {
+	// The array's largest element is "-2305843009213693952", so its element
+	// size is 28 bytes: 20 bytes of value plus the 8-byte index.
+	dump, err := os.ReadFile(filepath.Join(valueDumpsPath, "array.bin"))
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxValueSize: 28,
+	})
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxValueSize: 27,
+	})
+	require.ErrorContains(t, err, "max value size")
 }
 
 func TestVerifyValue_maxStreamPELSize(t *testing.T) {
@@ -170,6 +217,19 @@ func TestVerifyReader_maxEntrySize(t *testing.T) {
 		MaxEntrySize: 5,
 	})
 	require.ErrorContains(t, err, "max entry size")
+}
+
+func TestVerifyReader_maxValueSize(t *testing.T) {
+	file, err := os.Open(allTypesRDBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = file.Close()
+	})
+
+	err = VerifyReader(file, VerifyReaderOptions{
+		MaxValueSize: 5,
+	})
+	require.ErrorContains(t, err, "max value size")
 }
 
 func TestVerifyReader_maxKeySize(t *testing.T) {
@@ -255,6 +315,7 @@ func TestVerifier_String_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  3,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
@@ -268,6 +329,7 @@ func TestVerifier_String_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -278,16 +340,30 @@ func TestVerifier_String_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 2,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
 	require.ErrorContains(t, v.HandleString("k", "longvalue"), "max entry size")
 }
 
+func TestVerifier_String_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 2,
+		maxKeySize:   100,
+	}
+
+	require.NoError(t, v.HandleString("k", "va"))
+	require.ErrorContains(t, v.HandleString("k", "longvalue"), "max value size")
+}
+
 func TestVerifier_HashEntryHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      5,
 		maxEntrySize:     100,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 100,
 	}
@@ -304,6 +380,7 @@ func TestVerifier_HashEntryHandler_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -315,6 +392,7 @@ func TestVerifier_HashEntryHandler_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 3,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
@@ -323,10 +401,26 @@ func TestVerifier_HashEntryHandler_MaxEntrySize(t *testing.T) {
 	require.ErrorContains(t, h("x", "y"), "max entry size")
 }
 
+func TestVerifier_HashEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 2,
+		maxKeySize:   100,
+	}
+
+	h := v.HashEntryHandler("k")
+	// the limit is per field and value pair, not cumulative
+	require.NoError(t, h("f", "v"))
+	require.NoError(t, h("x", "y"))
+	require.ErrorContains(t, h("f", "longvalue"), "max value size")
+}
+
 func TestVerifier_HashWithExpEntryHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      21,
 		maxEntrySize:     100,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 100,
 	}
@@ -343,6 +437,7 @@ func TestVerifier_HashWithExpEntryHandler_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -354,6 +449,7 @@ func TestVerifier_HashWithExpEntryHandler_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 10,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
@@ -364,10 +460,27 @@ func TestVerifier_HashWithExpEntryHandler_MaxEntrySize(t *testing.T) {
 	require.ErrorContains(t, h("x", "y", time.Now()), "max entry size")
 }
 
+func TestVerifier_HashWithExpEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 10,
+		maxKeySize:   100,
+	}
+
+	h := v.HashWithExpEntryHandler("k")
+	// "f" + "v" + 8 = 10, at limit
+	require.NoError(t, h("f", "v", time.Now()))
+	require.NoError(t, h("x", "y", time.Now()))
+	// "f" + "vv" + 8 = 11, exceeds 10
+	require.ErrorContains(t, h("f", "vv", time.Now()), "max value size")
+}
+
 func TestVerifier_ListEntryHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      3,
 		maxEntrySize:     100,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 100,
 	}
@@ -384,6 +497,7 @@ func TestVerifier_ListEntryHandler_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -395,6 +509,7 @@ func TestVerifier_ListEntryHandler_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 1,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
@@ -403,10 +518,25 @@ func TestVerifier_ListEntryHandler_MaxEntrySize(t *testing.T) {
 	require.ErrorContains(t, h("b"), "max entry size")
 }
 
+func TestVerifier_ListEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 1,
+		maxKeySize:   100,
+	}
+
+	h := v.ListEntryHandler("k")
+	require.NoError(t, h("a"))
+	require.NoError(t, h("b"))
+	require.ErrorContains(t, h("cc"), "max value size")
+}
+
 func TestVerifier_SetEntryHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      3,
 		maxEntrySize:     100,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 100,
 	}
@@ -423,6 +553,7 @@ func TestVerifier_SetEntryHandler_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -434,6 +565,7 @@ func TestVerifier_SetEntryHandler_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 1,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
@@ -442,10 +574,25 @@ func TestVerifier_SetEntryHandler_MaxEntrySize(t *testing.T) {
 	require.ErrorContains(t, h("b"), "max entry size")
 }
 
+func TestVerifier_SetEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 1,
+		maxKeySize:   100,
+	}
+
+	h := v.SetEntryHandler("k")
+	require.NoError(t, h("a"))
+	require.NoError(t, h("b"))
+	require.ErrorContains(t, h("cc"), "max value size")
+}
+
 func TestVerifier_ZsetEntryHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      19,
 		maxEntrySize:     100,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 100,
 	}
@@ -462,6 +609,7 @@ func TestVerifier_ZsetEntryHandler_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 100,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -473,6 +621,7 @@ func TestVerifier_ZsetEntryHandler_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 9,
+		maxValueSize: 10000,
 		maxKeySize:   100,
 	}
 
@@ -483,10 +632,43 @@ func TestVerifier_ZsetEntryHandler_MaxEntrySize(t *testing.T) {
 	require.ErrorContains(t, h("b", 2), "max entry size")
 }
 
+func TestVerifier_ZsetEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 9,
+		maxKeySize:   100,
+	}
+
+	h := v.ZsetEntryHandler("k")
+	// "a" + 8 = 9, at limit
+	require.NoError(t, h("a", 1))
+	require.NoError(t, h("b", 2))
+	// "cc" + 8 = 10, exceeds 9
+	require.ErrorContains(t, h("cc", 3), "max value size")
+}
+
+func TestVerifier_ArrayEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 9,
+		maxKeySize:   100,
+	}
+
+	h := v.ArrayEntryHandler("k")
+	// "a" + 8 = 9, at limit
+	require.NoError(t, h(0, "a"))
+	require.NoError(t, h(1, "b"))
+	// "cc" + 8 = 10, exceeds 9
+	require.ErrorContains(t, h(2, "cc"), "max value size")
+}
+
 func TestVerifier_StreamEntryHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      42,
 		maxEntrySize:     1000,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 10,
 	}
@@ -503,6 +685,7 @@ func TestVerifier_StreamEntryHandler_MaxKeySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:  100,
 		maxEntrySize: 1000,
+		maxValueSize: 10000,
 		maxKeySize:   2,
 	}
 
@@ -510,10 +693,28 @@ func TestVerifier_StreamEntryHandler_MaxKeySize(t *testing.T) {
 	require.ErrorContains(t, h(StreamEntry{Value: []string{"a"}}), "max key size")
 }
 
+func TestVerifier_StreamEntryHandler_MaxValueSize(t *testing.T) {
+	v := &verifier{
+		maxDataSize:      10000,
+		maxEntrySize:     1000,
+		maxValueSize:     18,
+		maxKeySize:       100,
+		maxStreamPELSize: 10,
+	}
+
+	h := v.StreamEntryHandler("stream")
+	// "a" + "b" + 16 = 18, at limit
+	require.NoError(t, h(StreamEntry{Value: []string{"a", "b"}}))
+	require.NoError(t, h(StreamEntry{Value: []string{"x", "y"}}))
+	// "a" + "bb" + 16 = 19, exceeds 18
+	require.ErrorContains(t, h(StreamEntry{Value: []string{"a", "bb"}}), "max value size")
+}
+
 func TestVerifier_StreamGroupHandler_MaxDataSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      156,
 		maxEntrySize:     1000,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 10,
 	}
@@ -561,6 +762,7 @@ func TestVerifier_StreamGroupHandler_MaxEntrySize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      10000,
 		maxEntrySize:     100,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 10,
 	}
@@ -583,10 +785,42 @@ func TestVerifier_StreamGroupHandler_MaxEntrySize(t *testing.T) {
 	require.ErrorContains(t, h(group), "max entry size")
 }
 
+func TestVerifier_StreamGroupHandler_MaxValueSize(t *testing.T) {
+	// pending entry size: 32 + value "a" (1) = 33
+	v := &verifier{
+		maxDataSize:      10000,
+		maxEntrySize:     10000,
+		maxValueSize:     33,
+		maxKeySize:       100,
+		maxStreamPELSize: 10,
+	}
+
+	h := v.StreamGroupHandler("stream")
+
+	newGroup := func(value string) StreamConsumerGroup {
+		return StreamConsumerGroup{
+			Name: "g",
+			Consumers: []StreamConsumer{
+				{
+					Name: "c",
+					PendingEntries: []*StreamPendingEntry{
+						{Entry: StreamEntry{Value: []string{value}}},
+					},
+				},
+			},
+		}
+	}
+
+	require.NoError(t, h(newGroup("a")))
+	require.NoError(t, h(newGroup("b")))
+	require.ErrorContains(t, h(newGroup("cc")), "max value size")
+}
+
 func TestVerifier_StreamGroupHandler_MaxStreamPELSize(t *testing.T) {
 	v := &verifier{
 		maxDataSize:      10000,
 		maxEntrySize:     10000,
+		maxValueSize:     10000,
 		maxKeySize:       100,
 		maxStreamPELSize: 0,
 	}
