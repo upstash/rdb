@@ -13,55 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// loadValueDump reads a value dump, verifies its CRC, and returns it without
-// the checksum block.
-//
-// Unlike VerifyValueChecksum, it does not require the RDB version of the dump
-// to be one we support, which lets us test with the dumps taken from the newer
-// Redis versions. The array dumps come from Redis 8.10, which stamps the RDB
-// version 15 into them, even though arrays themselves are written since
-// ArrayMinVersion.
-func loadValueDump(t *testing.T, file string) []byte {
-	t.Helper()
-
-	dump, err := os.ReadFile(filepath.Join(valueDumpsPath, file))
-	require.NoError(t, err)
-	require.Greater(t, len(dump), ValueChecksumSize)
-
-	crc := binary.LittleEndian.Uint64(dump[len(dump)-8:])
-	require.Equal(t, getCRC(0, dump[:len(dump)-8]), crc)
-
-	return dump[:len(dump)-ValueChecksumSize]
-}
-
-func readArrayDump(t *testing.T, file string) ([]uint64, []string, uint64) {
-	t.Helper()
-
-	dump := loadValueDump(t, file)
-
-	r := valueReader{
-		buf: newMemoryBackedBuffer(dump),
-	}
-
-	ot, err := r.ReadType()
-	require.NoError(t, err)
-	require.Equal(t, TypeArray, ot)
-
-	indexes := make([]uint64, 0)
-	values := make([]string, 0)
-	cb := func(index uint64, value string) error {
-		indexes = append(indexes, index)
-		values = append(values, value)
-		return nil
-	}
-
-	read, insertIndex, err := r.ReadArray(cb)
-	require.NoError(t, err)
-	require.Equal(t, uint64(len(indexes)), read)
-
-	return indexes, values, insertIndex
-}
-
 func TestReadArray(t *testing.T) {
 	indexes, values, insertIndex := readArrayDump(t, "array.bin")
 
@@ -255,6 +206,8 @@ func TestEncodeArrayValue(t *testing.T) {
 		"whole float":               {value: "1.0", tag: arrayTagFloat},
 		"negative zero float":       {value: "-0.0", tag: arrayTagFloat},
 		"exact float":               {value: "-0.5", tag: arrayTagFloat},
+		"Redis fpconv float":        {value: "171422365113461.13", tag: arrayTagFloat},
+		"alternate shortest float":  {value: "171422365113461.12", tag: arrayTagStr},
 		"inexact float":             {value: "3.14", tag: arrayTagSmallStr},
 		"float in exponent form":    {value: "1e5", tag: arrayTagSmallStr},
 		"not a number":              {value: "nan", tag: arrayTagSmallStr},
@@ -330,6 +283,7 @@ func TestFormatArrayFloat(t *testing.T) {
 		math.MaxFloat64:             "1.7976931348623157e+308",
 		1.7976931348623157e-308:     "1.7976931348623155e-308",
 		math.SmallestNonzeroFloat64: "5e-324",
+		171422365113461.13:          "171422365113461.13",
 		math.Inf(1):                 "inf",
 		math.Inf(-1):                "-inf",
 		math.NaN():                  "nan",
@@ -337,6 +291,44 @@ func TestFormatArrayFloat(t *testing.T) {
 
 	for value, expected := range tests {
 		require.Equal(t, expected, formatArrayFloat(value), "for %v", value)
+	}
+}
+
+func TestReadValue_arrayFloatUsesFpconv(t *testing.T) {
+	payload := []byte{byte(TypeArray), 1, 0, 0, byte(arrayTagFloat)}
+	bits := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bits, 0x42e37d0c25bb8ea4)
+	payload = append(payload, bits...)
+
+	db := newDummyDB()
+	require.NoError(t, ReadValue("array", payload, db))
+	require.Equal(t, "171422365113461.13", db.arrays["array"][0])
+}
+
+func TestWriteArray_usesFpconv(t *testing.T) {
+	tests := map[string]struct {
+		value string
+		tag   byte
+	}{
+		"Redis representation": {
+			value: "171422365113461.13",
+			tag:   byte(arrayTagFloat),
+		},
+		"alternate representation": {
+			value: "171422365113461.12",
+			tag:   byte(arrayTagStr),
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			writer := NewWriter()
+			require.NoError(t, writer.WriteType(TypeArray))
+			require.NoError(t, writer.WriteArray([]uint64{0}, []string{tc.value}, ArrayInsertIndexNone))
+
+			// <type><len=1><has-cursor=0><index=0><tag>
+			require.Equal(t, tc.tag, writer.GetBuffer()[4])
+		})
 	}
 }
 
@@ -422,4 +414,41 @@ func TestVerifyValue_arrayMaxEntrySize(t *testing.T) {
 
 	err = VerifyValue(dump, VerifyValueOptions{})
 	require.NoError(t, err)
+}
+
+func loadValueDump(t *testing.T, file string) []byte {
+	dump, err := os.ReadFile(filepath.Join(valueDumpsPath, file))
+	require.NoError(t, err)
+	require.Greater(t, len(dump), ValueChecksumSize)
+
+	crc := binary.LittleEndian.Uint64(dump[len(dump)-8:])
+	require.Equal(t, getCRC(0, dump[:len(dump)-8]), crc)
+
+	return dump[:len(dump)-ValueChecksumSize]
+}
+
+func readArrayDump(t *testing.T, file string) ([]uint64, []string, uint64) {
+	dump := loadValueDump(t, file)
+
+	r := valueReader{
+		buf: newMemoryBackedBuffer(dump),
+	}
+
+	ot, err := r.ReadType()
+	require.NoError(t, err)
+	require.Equal(t, TypeArray, ot)
+
+	indexes := make([]uint64, 0)
+	values := make([]string, 0)
+	cb := func(index uint64, value string) error {
+		indexes = append(indexes, index)
+		values = append(values, value)
+		return nil
+	}
+
+	read, insertIndex, err := r.ReadArray(cb)
+	require.NoError(t, err)
+	require.Equal(t, uint64(len(indexes)), read)
+
+	return indexes, values, insertIndex
 }

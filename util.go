@@ -16,13 +16,6 @@ func minInt(x, y int) int {
 	return y
 }
 
-func absInt(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
 func bytesToString(b []byte) string {
 	return unsafe.String(unsafe.SliceData(b), len(b))
 }

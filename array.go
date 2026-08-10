@@ -5,6 +5,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/upstash/rdb/fpconv"
 )
 
 // errEmptyArray is returned for the arrays with no elements, which Redis
@@ -188,96 +190,5 @@ func d2string(value float64) string {
 		}
 	}
 
-	return fpconvDtoa(value)
-}
-
-// fpconvDtoa returns the shortest representation of the given finite and
-// non-zero float that can be parsed back into the same value, using the same
-// notation rules with the fpconv library Redis uses.
-func fpconvDtoa(value float64) string {
-	// strconv gives us the shortest round-trippable digits in the d.ddde±dd
-	// form, from which we extract the digits and the decimal exponent fpconv
-	// works with.
-	formatted := strconv.FormatFloat(value, 'e', -1, 64)
-
-	var sb strings.Builder
-	negative := false
-	if formatted[0] == '-' {
-		negative = true
-		sb.WriteByte('-')
-		formatted = formatted[1:]
-	}
-
-	mantissa, exponent, _ := strings.Cut(formatted, "e")
-	digits := strings.Replace(mantissa, ".", "", 1)
-	e, err := strconv.Atoi(exponent)
-	if err != nil {
-		// Not reachable, as the format of the value above is fixed.
-		return formatted
-	}
-
-	// fpconv represents the value as <digits> * 10^k
-	k := e - len(digits) + 1
-	exp := absInt(e)
-
-	switch {
-	case k >= 0 && exp < len(digits)+7:
-		// plain integer
-		sb.WriteString(digits)
-		sb.WriteString(strings.Repeat("0", k))
-	case k < 0 && (k > -7 || exp < 4):
-		// plain decimal
-		offset := len(digits) + k
-		if offset <= 0 {
-			sb.WriteString("0.")
-			sb.WriteString(strings.Repeat("0", -offset))
-			sb.WriteString(digits)
-		} else {
-			sb.WriteString(digits[:offset])
-			sb.WriteByte('.')
-			sb.WriteString(digits[offset:])
-		}
-	default:
-		// scientific notation, with at most 18 digits
-		maxDigits := 18
-		if negative {
-			maxDigits = 17
-		}
-
-		if len(digits) > maxDigits {
-			digits = digits[:maxDigits]
-		}
-
-		sb.WriteByte(digits[0])
-		if len(digits) > 1 {
-			sb.WriteByte('.')
-			sb.WriteString(digits[1:])
-		}
-
-		sb.WriteByte('e')
-		if k+len(digits)-1 < 0 {
-			sb.WriteByte('-')
-		} else {
-			sb.WriteByte('+')
-		}
-
-		cent := 0
-		if exp > 99 {
-			cent = exp / 100
-			sb.WriteByte(byte(cent) + '0')
-			exp -= cent * 100
-		}
-
-		if exp > 9 {
-			dec := exp / 10
-			sb.WriteByte(byte(dec) + '0')
-			exp -= dec * 10
-		} else if cent != 0 {
-			sb.WriteByte('0')
-		}
-
-		sb.WriteByte(byte(exp%10) + '0')
-	}
-
-	return sb.String()
+	return fpconv.Dtoa(value)
 }
