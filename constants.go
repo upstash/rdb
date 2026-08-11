@@ -1,6 +1,14 @@
 package rdb
 
-const Version uint16 = 14
+const (
+	// Version is the RDB version emitted by this package.
+	Version uint16 = 14
+
+	// MaxReadVersion is the latest RDB version this package can read.
+	// Version 15 only adds hash-template encodings; other encodings, including
+	// arrays, are unchanged from version 14.
+	MaxReadVersion uint16 = 15
+)
 
 type Type uint8
 

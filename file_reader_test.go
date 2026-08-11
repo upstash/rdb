@@ -1,7 +1,10 @@
 package rdb
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -235,6 +238,21 @@ func TestFileReader_unsupportedVersion(t *testing.T) {
 	db := newDummyDB()
 	err := ReadFile(filepath.Join(dumpsPath, "from-future.rdb"), db)
 	require.ErrorContains(t, err, "cannot handle RDB format version 42")
+}
+
+func TestFileReader_version15(t *testing.T) {
+	dump, err := os.ReadFile(filepath.Join(dumpsPath, "all-types.rdb"))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(dump), headerLen+crcLen)
+
+	version := fmt.Sprintf("%04d", MaxReadVersion)
+	require.Len(t, version, versionLen)
+	copy(dump[magicLen:headerLen], version)
+	binary.LittleEndian.PutUint64(dump[len(dump)-crcLen:], getCRC(0, dump[:len(dump)-crcLen]))
+
+	path := filepath.Join(t.TempDir(), "version-15.rdb")
+	require.NoError(t, os.WriteFile(path, dump, 0o600))
+	require.NoError(t, ReadFile(path, newDummyDB()))
 }
 
 func TestFileReader_badHeader(t *testing.T) {

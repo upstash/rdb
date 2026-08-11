@@ -37,7 +37,7 @@ func VerifyValueChecksum(payload []byte) error {
 	}
 
 	version := binary.LittleEndian.Uint16(payload[n-ValueChecksumSize:])
-	if version > Version {
+	if version > MaxReadVersion {
 		return fmt.Errorf("RDB version %d is not supported by Upstash", version)
 	}
 

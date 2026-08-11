@@ -89,7 +89,7 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 		return err
 	}
 
-	if version < 1 || version > int(Version) {
+	if version < 1 || version > int(MaxReadVersion) {
 		return fmt.Errorf("cannot handle RDB format version %d", version)
 	}
 

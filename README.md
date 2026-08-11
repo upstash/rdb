@@ -1,6 +1,7 @@
 # RDB Parser
 
-This library is capable of parsing RDB files upto version 14.
+This library is capable of parsing supported values in RDB files up to version 15.
+It emits version 14 and rejects version 15 hash-template encodings, which are not supported yet.
 
 It can also be used to parse and dump single RDB values, and verify RDB files and values.
 
