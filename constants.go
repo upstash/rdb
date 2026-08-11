@@ -1,6 +1,6 @@
 package rdb
 
-const Version uint16 = 12
+const Version uint16 = 14
 
 type Type uint8
 
@@ -29,6 +29,9 @@ const (
 	TypeHashListpackExPreGa Type = 23 // pre-ga type is not supported.
 	TypeHashMetadata        Type = 24
 	TypeHashListpackEx      Type = 25
+	TypeStreamListpacks4    Type = 26 // stream with IDMP support is not supported
+	TypeStreamListpacks5    Type = 27 // stream with XNACK support is not supported
+	TypeArray               Type = 28
 )
 
 const (

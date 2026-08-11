@@ -48,6 +48,15 @@ type ValueHandler interface {
 	// returned function is called for each read hash entry with expiration info for the key.
 	HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error
 
+	// returned function is called for the each element read for the key, with
+	// the index of that element and its value.
+	ArrayEntryHandler(key string) func(index uint64, value string) error
+
+	// called when the array is read completely, with the name, the number of
+	// elements read, and the insert cursor of the array. The cursor is equal to
+	// ArrayInsertIndexNone for the arrays that have none.
+	HandleArrayEnding(key string, entriesRead uint64, insertIndex uint64)
+
 	// called when the a function code is read
 	HandleLibrary(code string) error
 }
@@ -133,6 +142,15 @@ func (nopHandler) HandleExpireTime(key string, expireTime time.Time) {
 
 func (h nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
 	return nil
+}
+
+func (nopHandler) ArrayEntryHandler(key string) func(index uint64, value string) error {
+	return func(index uint64, value string) error {
+		return nil
+	}
+}
+
+func (nopHandler) HandleArrayEnding(key string, entriesRead uint64, insertIndex uint64) {
 }
 
 func (nopHandler) HandleLibrary(code string) error {

@@ -178,6 +178,27 @@ func (s *FileEncoder) BeginSortedSet(key string, expiry time.Time) (*SortedSetEn
 	return NewSortedSetEncoder(s)
 }
 
+// BeginArray starts writing an array whose insert cursor is insertIndex, which
+// is the index the last ARINSERT wrote to. The next insertion goes to
+// insertIndex + 1. It must be set to ArrayInsertIndexNone for the arrays that
+// have no cursor. Redis rejects the empty arrays, so at least one element must
+// be written before the returned encoder is closed.
+func (s *FileEncoder) BeginArray(key string, insertIndex uint64, expiry time.Time) (*ArrayEncoder, error) {
+	if s.begin {
+		return nil, fmt.Errorf("cannot begin; a collection is already being written. Call Close on the existing collection first")
+	}
+	s.begin = true
+	if err := s.writeExpiry(expiry); err != nil {
+		return nil, err
+	}
+	err := s.writeTypeAndKey(TypeArray, key)
+	if err != nil {
+		return nil, err
+	}
+	s.count++
+	return NewArrayEncoder(s, insertIndex)
+}
+
 func (s *FileEncoder) WriteJSON(key string, json string, expiry time.Time) error {
 	if s.begin {
 		return fmt.Errorf("cannot write; a collection is already being written. Call Close on the existing collection first")
