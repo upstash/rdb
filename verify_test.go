@@ -161,6 +161,29 @@ func TestVerifyValue_maxValueSize_arrayElement(t *testing.T) {
 	require.ErrorContains(t, err, "max value size")
 }
 
+func TestVerifyValue_maxValueSize_module(t *testing.T) {
+	// A module payload is one entry holding as many values as the store
+	// reading it makes of it, so only the entry limit applies. This JSON
+	// document is 176 bytes.
+	dump, err := os.ReadFile(filepath.Join(valueDumpsPath, "module2-jsonv3.bin"))
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxValueSize: 1,
+	})
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxEntrySize: 176,
+	})
+	require.NoError(t, err)
+
+	err = VerifyValue(dump, VerifyValueOptions{
+		MaxEntrySize: 175,
+	})
+	require.ErrorContains(t, err, "max entry size")
+}
+
 func TestVerifyValue_maxStreamPELSize(t *testing.T) {
 	dump, err := os.ReadFile(streamWithPELRDBValuePath)
 	require.NoError(t, err)

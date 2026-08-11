@@ -458,9 +458,10 @@ func (v *verifier) HandleModule(key string, value string, marker ModuleMarker) e
 		return errMaxKeySizeExceeded(len(key), v.maxKeySize)
 	}
 
-	if len(value) > v.maxValueSize {
-		return errMaxValueSizeExceeded(len(value), v.maxValueSize)
-	}
+	// we don't check for the max value size here, as a module payload is a
+	// whole entry rather than a single value. how many values it holds is
+	// known to the store reading it.
+	// For example a JSON document is persisted as a value per path leaf.
 
 	if len(value) > v.maxEntrySize {
 		return errMaxEntrySizeExceeded(len(value), v.maxEntrySize)
