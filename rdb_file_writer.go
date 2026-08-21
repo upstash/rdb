@@ -113,10 +113,6 @@ func (fw FileWriter) Flush() error {
 }
 
 func (fw FileWriter) Close() error {
-	err := fw.w.Flush()
-	if err != nil {
-		return err
-	}
 	return fw.f.Close()
 }
 
