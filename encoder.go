@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -17,10 +18,10 @@ type FileEncoder struct {
 }
 
 func NewFileEncoder(path string, redisVersion string) (*FileEncoder, error) {
-	w, err := newFileWriter(path)
 	if redisVersion == "" {
 		return nil, fmt.Errorf("missing Redis version")
 	}
+	w, err := newFileWriter(path)
 	if err != nil {
 		return nil, err
 	}
@@ -238,8 +239,15 @@ func (s *FileEncoder) WriteLibrary(code string) error {
 	return s.writeString(code)
 }
 
-func (s *FileEncoder) Close() error {
-	err := s.writeEOF()
+func (s *FileEncoder) Close() (err error) {
+	defer func() {
+		cErr := s.writer.Close()
+		if cErr != nil {
+			err = errors.Join(err, cErr)
+		}
+	}()
+
+	err = s.writeEOF()
 	if err != nil {
 		return err
 	}
