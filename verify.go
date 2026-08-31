@@ -25,7 +25,6 @@ type VerifyFileOptions struct {
 	MaxStreamPELSize   int
 	MaxLibrarySize     int
 	AllowPartialVerify bool
-	RequireStrictEOF   bool
 }
 
 func (o *VerifyFileOptions) maybeSetDefaults() {
@@ -66,7 +65,6 @@ func VerifyFile(path string, opts VerifyFileOptions) error {
 		maxStreamPELSize:   opts.MaxStreamPELSize,
 		maxLibrarySize:     opts.MaxLibrarySize,
 		allowPartialVerify: opts.AllowPartialVerify,
-		requireStrictEOF:   opts.RequireStrictEOF,
 	}
 
 	file, err := os.Open(path)
@@ -94,7 +92,6 @@ type VerifyReaderOptions struct {
 	MaxStreamPELSize   int
 	MaxLibrarySize     int
 	AllowPartialVerify bool
-	RequireStrictEOF   bool
 }
 
 func (o *VerifyReaderOptions) maybeSetDefaults() {
@@ -135,7 +132,6 @@ func VerifyReader(r io.Reader, opts VerifyReaderOptions) error {
 		maxStreamPELSize:   opts.MaxStreamPELSize,
 		maxLibrarySize:     opts.MaxLibrarySize,
 		allowPartialVerify: opts.AllowPartialVerify,
-		requireStrictEOF:   opts.RequireStrictEOF,
 	}
 
 	buf := newForwardOnlyBuffer(r)
@@ -216,7 +212,6 @@ type verifier struct {
 	maxKeySize         int
 	maxStreamPELSize   int
 	allowPartialVerify bool
-	requireStrictEOF   bool
 	dataSize           int
 	librarySize        int
 	maxLibrarySize     int
@@ -577,10 +572,6 @@ func (v *verifier) StreamGroupHandler(key string) func(group StreamConsumerGroup
 
 func (v *verifier) AllowPartialRead() bool {
 	return v.allowPartialVerify
-}
-
-func (v *verifier) RequireStrictEOF() bool {
-	return v.requireStrictEOF
 }
 
 func (v *verifier) HandleExpireTime(key string, expireTime time.Time) {

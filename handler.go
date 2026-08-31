@@ -7,10 +7,6 @@ type ValueHandler interface {
 	// whether the handler can skip known but not yet supported types or not.
 	AllowPartialRead() bool
 
-	// whether the handler expects the file to end with the eof opcode, i.e,
-	// has no more bytes to the right of it.
-	RequireStrictEOF() bool
-
 	// called when a string value is read for the key.
 	HandleString(key, value string) error
 
@@ -80,10 +76,6 @@ func (nopHandler) AllowPartialRead() bool {
 	return true
 }
 
-func (nopHandler) RequireStrictEOF() bool {
-	return false
-}
-
 func (nopHandler) HandleString(key, value string) error {
 	return nil
 }
@@ -141,7 +133,9 @@ func (nopHandler) HandleExpireTime(key string, expireTime time.Time) {
 }
 
 func (h nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
-	return nil
+	return func(field, value string, exp time.Time) error {
+		return nil
+	}
 }
 
 func (nopHandler) ArrayEntryHandler(key string) func(index uint64, value string) error {
