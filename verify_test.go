@@ -15,7 +15,6 @@ var badCrcRDBPath = filepath.Join(dumpsPath, "bad-crc.rdb")
 var stringRDBValuePath = filepath.Join(valueDumpsPath, "string.bin")
 var streamWithPELRDBValuePath = filepath.Join(valueDumpsPath, "stream-listpacks3.bin")
 var multiDBRDBPath = filepath.Join(dumpsPath, "multi-db.rdb")
-var withPaddingRDBPath = filepath.Join(dumpsPath, "with-padding.rdb")
 var bigDumpPath = filepath.Join(dumpsPath, "big.rdb")
 
 func TestVerifyFile(t *testing.T) {
