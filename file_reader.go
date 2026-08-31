@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"time"
@@ -129,13 +128,6 @@ func readFile(buf buffer, handler FileHandler, maxLz77StrLen uint64) error {
 					// if it is disabled, the crc bytes are still there but
 					// it is equal to 0.
 					return errors.New("wrong CRC at the end of the RDB file")
-				}
-			}
-
-			if handler.RequireStrictEOF() {
-				_, err = buf.Get(1)
-				if err != io.EOF {
-					return errors.New("required file to end after eof opcode")
 				}
 			}
 

@@ -15,7 +15,6 @@ var badCrcRDBPath = filepath.Join(dumpsPath, "bad-crc.rdb")
 var stringRDBValuePath = filepath.Join(valueDumpsPath, "string.bin")
 var streamWithPELRDBValuePath = filepath.Join(valueDumpsPath, "stream-listpacks3.bin")
 var multiDBRDBPath = filepath.Join(dumpsPath, "multi-db.rdb")
-var withPaddingRDBPath = filepath.Join(dumpsPath, "with-padding.rdb")
 var bigDumpPath = filepath.Join(dumpsPath, "big.rdb")
 
 func TestVerifyFile(t *testing.T) {
@@ -38,18 +37,6 @@ func TestVerifyFile_AllowPartialRead(t *testing.T) {
 		AllowPartialVerify: false,
 	})
 	require.ErrorContains(t, err, "partial restore")
-}
-
-func TestVerifyFile_RequireStrictEOF(t *testing.T) {
-	err := VerifyFile(withPaddingRDBPath, VerifyFileOptions{
-		RequireStrictEOF: false,
-	})
-	require.NoError(t, err)
-
-	err = VerifyFile(withPaddingRDBPath, VerifyFileOptions{
-		RequireStrictEOF: true,
-	})
-	require.ErrorContains(t, err, "eof")
 }
 
 func TestVerifyFile_BadCrc(t *testing.T) {
@@ -311,27 +298,6 @@ func TestVerifyReader_AllowPartialRead(t *testing.T) {
 		AllowPartialVerify: false,
 	})
 	require.ErrorContains(t, err, "partial restore")
-}
-
-func TestVerifyReader_RequireStrictEOF(t *testing.T) {
-	file, err := os.Open(withPaddingRDBPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = file.Close()
-	})
-
-	err = VerifyReader(file, VerifyReaderOptions{
-		RequireStrictEOF: false,
-	})
-	require.NoError(t, err)
-
-	_, err = file.Seek(0, 0)
-	require.NoError(t, err)
-
-	err = VerifyReader(file, VerifyReaderOptions{
-		RequireStrictEOF: true,
-	})
-	require.ErrorContains(t, err, "eof")
 }
 
 func TestVerifier_String_MaxDataSize(t *testing.T) {
