@@ -140,8 +140,10 @@ func (nopHandler) HandleStreamEnding(key string, entriesRead uint64) {
 func (nopHandler) HandleExpireTime(key string, expireTime time.Time) {
 }
 
-func (h nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
-	return nil
+func (nopHandler) HashWithExpEntryHandler(key string) func(field string, value string, exp time.Time) error {
+	return func(field string, value string, exp time.Time) error {
+		return nil
+	}
 }
 
 func (nopHandler) ArrayEntryHandler(key string) func(index uint64, value string) error {
