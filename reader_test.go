@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -11,8 +12,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/ohler55/ojg/oj"
 	"github.com/stretchr/testify/require"
 )
 
@@ -337,7 +336,7 @@ func TestReadModule2_JSON(t *testing.T) {
 			require.NoError(t, err)
 
 			var actual map[string]any
-			err = oj.Unmarshal([]byte(value), &actual)
+			err = json.Unmarshal([]byte(value), &actual)
 			require.NoError(t, err)
 
 			require.Equal(t, expected, actual)
