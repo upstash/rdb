@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -176,6 +177,8 @@ func VerifyValue(payload []byte, opts VerifyValueOptions) error {
 
 	return readValue("", payload, v, uint64(opts.MaxEntrySize))
 }
+
+var errNaNScore = errors.New("zset with NaN score")
 
 func errMaxDataSizeExceeded(current int, limit int) error {
 	return fmt.Errorf("max data size is exceeded. current: %d, limit: %d", current, limit)
@@ -394,6 +397,11 @@ func (v *verifier) ZsetEntryHandler(key string) func(elem string, score float64)
 
 	var entrySize int
 	return func(elem string, score float64) error {
+		// Redis refuses to load a NaN score too: a skiplist cannot order it.
+		if math.IsNaN(score) {
+			return errNaNScore
+		}
+
 		elementSize := len(elem) + 8
 		if elementSize > v.maxValueSize {
 			return errMaxValueSizeExceeded(elementSize, v.maxValueSize)

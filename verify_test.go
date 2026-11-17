@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -827,4 +828,25 @@ func TestVerifier_StreamGroupHandler_MaxStreamPELSize(t *testing.T) {
 		},
 	}
 	require.ErrorContains(t, h(group), "max stream pel size")
+}
+
+func TestVerifier_ZsetEntryHandler_NaNScore(t *testing.T) {
+	v := &verifier{
+		maxDataSize:  100,
+		maxEntrySize: 100,
+		maxValueSize: 100,
+		maxKeySize:   100,
+	}
+
+	h := v.ZsetEntryHandler("k")
+	require.NoError(t, h("a", math.Inf(1)))
+	require.ErrorIs(t, h("b", math.NaN()), errNaNScore)
+}
+
+func TestVerifyValue_ZsetNaNScore(t *testing.T) {
+	w := NewWriter()
+	require.NoError(t, w.WriteType(TypeZset2))
+	require.NoError(t, w.WriteZset([]string{"a", "b"}, []float64{1, math.NaN()}))
+
+	require.ErrorIs(t, VerifyValue(w.GetBuffer(), VerifyValueOptions{}), errNaNScore)
 }
